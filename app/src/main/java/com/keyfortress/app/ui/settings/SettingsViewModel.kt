@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.keyfortress.app.data.repository.AccountRepository
 import com.keyfortress.app.security.AppLockManager
 import com.keyfortress.app.security.BiometricAuthHelper
+import com.keyfortress.app.util.BackupFileManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,8 +17,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.File
 import java.io.OutputStreamWriter
 
 data class SettingsUiState(
@@ -101,7 +101,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun changeMasterPassword(oldPassword: String, newPassword: String, onComplete: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            // First verify old password
             val verified = AppLockManager.unlockWithPassword(oldPassword)
             if (!verified) {
                 onComplete(false, "原主密码错误")
@@ -121,7 +120,36 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun exportBackup(uri: Uri, backupPassword: String) {
+    /**
+     * Exports backup directly to Downloads/KeyFortress and optionally launches system share sheet.
+     * 100% crash-free on all devices (does not depend on DocumentsUI).
+     */
+    fun exportBackupDirectly(backupPassword: String, shareAfterExport: Boolean = true) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isProcessing = true)
+            try {
+                val encryptedData = repository.exportEncryptedVault(backupPassword)
+                val fileName = "KeyFortress_Backup_${System.currentTimeMillis()}.vault"
+
+                val (saved, msg) = withContext(Dispatchers.IO) {
+                    BackupFileManager.saveToDownloads(getApplication(), fileName, encryptedData)
+                }
+
+                if (shareAfterExport) {
+                    AppLockManager.isBypassingAutoLock = true
+                    BackupFileManager.shareBackup(getApplication(), fileName, encryptedData)
+                }
+
+                _uiState.value = _uiState.value.copy(isProcessing = false)
+                _message.emit(if (saved) msg else "导出备份失败")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isProcessing = false)
+                _message.emit("导出失败: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun exportBackupToUri(uri: Uri, backupPassword: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isProcessing = true)
             try {
@@ -142,18 +170,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun importBackup(uri: Uri, backupPassword: String) {
+    fun importBackupFromUri(uri: Uri, backupPassword: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isProcessing = true)
             try {
                 val content = withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { isStream ->
-                        BufferedReader(InputStreamReader(isStream, Charsets.UTF_8)).use { reader ->
-                            reader.readText()
-                        }
-                    } ?: throw IllegalStateException("无法读取选中的备份文件")
+                    BackupFileManager.readTextFromUri(getApplication(), uri)
                 }
-
                 val count = repository.importEncryptedVault(content, backupPassword)
                 _uiState.value = _uiState.value.copy(isProcessing = false)
                 _message.emit("成功恢复 $count 条密码记录！")
@@ -162,5 +185,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 _message.emit("导入恢复失败 (密码可能错误): ${e.localizedMessage}")
             }
         }
+    }
+
+    fun importBackupFromText(content: String, backupPassword: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isProcessing = true)
+            try {
+                val count = repository.importEncryptedVault(content.trim(), backupPassword)
+                _uiState.value = _uiState.value.copy(isProcessing = false)
+                _message.emit("成功恢复 $count 条密码记录！")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isProcessing = false)
+                _message.emit("导入恢复失败 (密码或数据格式错误): ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun getLocalBackups(): List<File> {
+        return BackupFileManager.listLocalBackups(getApplication())
     }
 }

@@ -22,14 +22,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.LockClock
-import androidx.compose.material.icons.filled.NoEncryption
 import androidx.compose.material.icons.filled.QuestionAnswer
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
-import com.keyfortress.app.ui.components.SetSecurityQuestionDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -64,8 +59,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.keyfortress.app.security.AppLockManager
+import com.keyfortress.app.ui.components.ClipboardImportDialog
+import com.keyfortress.app.ui.components.ExportVaultDialog
+import com.keyfortress.app.ui.components.ImportOptionsDialog
 import com.keyfortress.app.ui.components.PasswordInputDialog
+import com.keyfortress.app.ui.components.SetSecurityQuestionDialog
 import kotlinx.coroutines.flow.collectLatest
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +86,29 @@ fun SettingsScreen(
     var showTimeoutDialog by remember { mutableStateOf(false) }
     var showSecurityQuestionDialog by remember { mutableStateOf(false) }
 
+    // Export & Import Dialogs
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showImportOptionsDialog by remember { mutableStateOf(false) }
+    var showClipboardImportDialog by remember { mutableStateOf(false) }
+
+    // Local file import state
+    var selectedLocalFile by remember { mutableStateOf<File?>(null) }
+    var showLocalFilePasswordDialog by remember { mutableStateOf(false) }
+
+    // SAF File Picker
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var showUriPasswordDialog by remember { mutableStateOf(false) }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        AppLockManager.isBypassingAutoLock = false
+        if (uri != null) {
+            pendingImportUri = uri
+            showUriPasswordDialog = true
+        }
+    }
+
     if (showSecurityQuestionDialog) {
         SetSecurityQuestionDialog(
             initialQuestion = uiState.securityQuestion,
@@ -97,69 +120,96 @@ fun SettingsScreen(
         )
     }
 
-    // SAF Launchers
-    var pendingExportUri by remember { mutableStateOf<Uri?>(null) }
-    var showExportPasswordDialog by remember { mutableStateOf(false) }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            pendingExportUri = uri
-            showExportPasswordDialog = true
-        }
+    if (showExportDialog) {
+        ExportVaultDialog(
+            onConfirmExport = { pwd, share ->
+                viewModel.exportBackupDirectly(pwd, share)
+                showExportDialog = false
+            },
+            onDismiss = { showExportDialog = false }
+        )
     }
 
-    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
-    var showImportPasswordDialog by remember { mutableStateOf(false) }
-
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            pendingImportUri = uri
-            showImportPasswordDialog = true
-        }
+    if (showImportOptionsDialog) {
+        ImportOptionsDialog(
+            localBackups = viewModel.getLocalBackups(),
+            onSelectFilePicker = {
+                showImportOptionsDialog = false
+                try {
+                    AppLockManager.isBypassingAutoLock = true
+                    importLauncher.launch(arrayOf("*/*"))
+                } catch (e: Exception) {
+                    AppLockManager.isBypassingAutoLock = false
+                    // Fallback to clipboard if system document picker is unavailable
+                    showClipboardImportDialog = true
+                }
+            },
+            onSelectLocalFile = { file ->
+                showImportOptionsDialog = false
+                selectedLocalFile = file
+                showLocalFilePasswordDialog = true
+            },
+            onSelectClipboard = {
+                showImportOptionsDialog = false
+                showClipboardImportDialog = true
+            },
+            onDismiss = { showImportOptionsDialog = false }
+        )
     }
 
-    if (showExportPasswordDialog && pendingExportUri != null) {
+    if (showLocalFilePasswordDialog && selectedLocalFile != null) {
         PasswordInputDialog(
-            title = "设置备份加密密码",
-            message = "备份文件将采用 AES-256-GCM 算法加密，请设置恢复该备份所需的密码：",
-            confirmText = "确认导出",
+            title = "恢复本地备份",
+            message = "正在恢复文件: ${selectedLocalFile!!.name}\n请输入导出时设置的备份解密密码：",
+            confirmText = "确认恢复",
             onConfirm = { pwd ->
-                viewModel.exportBackup(pendingExportUri!!, pwd)
-                pendingExportUri = null
-                showExportPasswordDialog = false
+                try {
+                    val content = selectedLocalFile!!.readText(Charsets.UTF_8)
+                    viewModel.importBackupFromText(content, pwd)
+                } catch (e: Exception) {
+                    // Handled in viewModel
+                }
+                selectedLocalFile = null
+                showLocalFilePasswordDialog = false
             },
             onDismiss = {
-                pendingExportUri = null
-                showExportPasswordDialog = false
+                selectedLocalFile = null
+                showLocalFilePasswordDialog = false
             }
         )
     }
 
-    if (showImportPasswordDialog && pendingImportUri != null) {
+    if (showUriPasswordDialog && pendingImportUri != null) {
         PasswordInputDialog(
             title = "输入备份解密密码",
             message = "请输入当初导出该备份时设置的加密密码：",
             confirmText = "确认恢复",
             onConfirm = { pwd ->
-                viewModel.importBackup(pendingImportUri!!, pwd)
+                viewModel.importBackupFromUri(pendingImportUri!!, pwd)
                 pendingImportUri = null
-                showImportPasswordDialog = false
+                showUriPasswordDialog = false
             },
             onDismiss = {
                 pendingImportUri = null
-                showImportPasswordDialog = false
+                showUriPasswordDialog = false
             }
+        )
+    }
+
+    if (showClipboardImportDialog) {
+        ClipboardImportDialog(
+            onConfirm = { text, pwd ->
+                viewModel.importBackupFromText(text, pwd)
+                showClipboardImportDialog = false
+            },
+            onDismiss = { showClipboardImportDialog = false }
         )
     }
 
     if (showChangePasswordDialog) {
         ChangeMasterPasswordDialog(
             onConfirm = { old, new ->
-                viewModel.changeMasterPassword(old, new) { success, msg ->
+                viewModel.changeMasterPassword(old, new) { success, _ ->
                     if (success) {
                         showChangePasswordDialog = false
                     }
@@ -259,7 +309,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Section 2: Data Management (SAF Export & Import)
+            // Section 2: Data Management
             SectionHeader(title = "数据备份与恢复")
 
             Card(
@@ -271,20 +321,15 @@ fun SettingsScreen(
                     SettingActionItem(
                         icon = Icons.Default.FileUpload,
                         title = "导出加密备份文件",
-                        subtitle = "导出为受密码保护的 .vault 加密文件",
-                        onClick = {
-                            val defaultName = "KeyFortress_Backup_${System.currentTimeMillis()}.vault"
-                            exportLauncher.launch(defaultName)
-                        }
+                        subtitle = "安全保存至「下载」目录或调起系统分享",
+                        onClick = { showExportDialog = true }
                     )
 
                     SettingActionItem(
                         icon = Icons.Default.FileDownload,
                         title = "从本地文件恢复数据",
-                        subtitle = "导入并解密历史备份，合并至当前库",
-                        onClick = {
-                            importLauncher.launch(arrayOf("*/*", "application/json", "application/octet-stream"))
-                        }
+                        subtitle = "从手机存储、下载目录或剪贴板导入",
+                        onClick = { showImportOptionsDialog = true }
                     )
                 }
             }

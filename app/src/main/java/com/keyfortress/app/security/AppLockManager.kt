@@ -334,8 +334,11 @@ object AppLockManager {
         return activeMasterKey
     }
 
+    @Volatile
+    var isBypassingAutoLock: Boolean = false
+
     fun onAppBackgrounded() {
-        if (!_isLocked.value) {
+        if (!_isLocked.value && !isBypassingAutoLock) {
             backgroundTimestamp = System.currentTimeMillis()
             val timeout = getAutoLockTimeout()
             if (timeout == TIMEOUT_IMMEDIATE) {
@@ -345,6 +348,10 @@ object AppLockManager {
     }
 
     fun onAppForegrounded() {
+        if (isBypassingAutoLock) {
+            isBypassingAutoLock = false
+            return
+        }
         if (!_isLocked.value && backgroundTimestamp > 0L) {
             val elapsed = (System.currentTimeMillis() - backgroundTimestamp) / 1000L
             val timeout = getAutoLockTimeout()
