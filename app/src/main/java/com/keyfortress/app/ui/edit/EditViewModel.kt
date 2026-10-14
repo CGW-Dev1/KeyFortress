@@ -78,6 +78,17 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(notes = notes)
     }
 
+    fun applySmartParsed(title: String, accountName: String, password: String, notes: String, category: String) {
+        _uiState.value = _uiState.value.copy(
+            title = title,
+            accountName = accountName,
+            password = password,
+            notes = notes,
+            category = category,
+            errorMessage = ""
+        )
+    }
+
     fun onStarredChange(isStarred: Boolean) {
         _uiState.value = _uiState.value.copy(isStarred = isStarred)
     }

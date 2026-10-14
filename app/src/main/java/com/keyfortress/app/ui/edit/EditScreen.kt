@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.keyfortress.app.data.model.CategoryConstants
 import com.keyfortress.app.ui.components.PasswordGeneratorSheet
 import com.keyfortress.app.ui.components.PasswordStrengthBar
+import com.keyfortress.app.ui.components.SingleSmartParseDialog
 
 private val PLATFORM_SUGGESTIONS = listOf(
     Pair("微信", CategoryConstants.SOCIAL),
@@ -85,6 +86,7 @@ fun EditScreen(
     val uiState by viewModel.uiState.collectAsState()
     var passwordVisible by remember { mutableStateOf(false) }
     var showGeneratorSheet by remember { mutableStateOf(false) }
+    var showSmartParseDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -102,6 +104,17 @@ fun EditScreen(
         )
     }
 
+    if (showSmartParseDialog) {
+        SingleSmartParseDialog(
+            onDismiss = { showSmartParseDialog = false },
+            onParsed = { title, account, password, notes, category ->
+                viewModel.applySmartParsed(title, account, password, notes, category)
+                showSmartParseDialog = false
+                passwordVisible = true
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -112,6 +125,11 @@ fun EditScreen(
                     }
                 },
                 actions = {
+                    if (!uiState.isEditMode) {
+                        IconButton(onClick = { showSmartParseDialog = true }) {
+                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "智能识别填入")
+                        }
+                    }
                     IconButton(
                         onClick = { viewModel.saveAccount() },
                         enabled = !uiState.isSaving

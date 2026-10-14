@@ -177,6 +177,15 @@ class AccountRepository(private val context: Context) {
         }
     }
 
+    suspend fun saveAccountsBatch(items: List<AccountItem>): Int = withContext(Dispatchers.IO) {
+        var count = 0
+        for (item in items) {
+            saveAccount(item)
+            count++
+        }
+        count
+    }
+
     suspend fun deleteAccount(id: Long) = withContext(Dispatchers.IO) {
         getDatabase().accountDao().deleteById(id)
     }

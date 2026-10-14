@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Fingerprint
@@ -64,6 +65,7 @@ import com.keyfortress.app.ui.components.ExportVaultDialog
 import com.keyfortress.app.ui.components.ImportOptionsDialog
 import com.keyfortress.app.ui.components.PasswordInputDialog
 import com.keyfortress.app.ui.components.SetSecurityQuestionDialog
+import com.keyfortress.app.ui.components.SmartTextImportDialog
 import kotlinx.coroutines.flow.collectLatest
 import java.io.File
 
@@ -90,6 +92,7 @@ fun SettingsScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var showImportOptionsDialog by remember { mutableStateOf(false) }
     var showClipboardImportDialog by remember { mutableStateOf(false) }
+    var showSmartImportDialog by remember { mutableStateOf(false) }
 
     // Local file import state
     var selectedLocalFile by remember { mutableStateOf<File?>(null) }
@@ -203,6 +206,17 @@ fun SettingsScreen(
                 showClipboardImportDialog = false
             },
             onDismiss = { showClipboardImportDialog = false }
+        )
+    }
+
+    if (showSmartImportDialog) {
+        SmartTextImportDialog(
+            onDismiss = { showSmartImportDialog = false },
+            onConfirmImport = { items ->
+                viewModel.importSmartAccounts(items) {
+                    showSmartImportDialog = false
+                }
+            }
         )
     }
 
@@ -330,6 +344,13 @@ fun SettingsScreen(
                         title = "从本地文件恢复数据",
                         subtitle = "从手机存储、下载目录或剪贴板导入",
                         onClick = { showImportOptionsDialog = true }
+                    )
+
+                    SettingActionItem(
+                        icon = Icons.Default.AutoAwesome,
+                        title = "智能文本导入",
+                        subtitle = "批量粘贴任意文本，自动识别账号密码并分类",
+                        onClick = { showSmartImportDialog = true }
                     )
                 }
             }

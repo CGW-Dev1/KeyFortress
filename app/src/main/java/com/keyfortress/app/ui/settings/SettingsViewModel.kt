@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.keyfortress.app.data.repository.AccountItem
 import com.keyfortress.app.data.repository.AccountRepository
 import com.keyfortress.app.security.AppLockManager
 import com.keyfortress.app.security.BiometricAuthHelper
@@ -203,5 +204,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun getLocalBackups(): List<File> {
         return BackupFileManager.listLocalBackups(getApplication())
+    }
+
+    fun importSmartAccounts(items: List<AccountItem>, onComplete: (Int) -> Unit) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isProcessing = true)
+            try {
+                val count = repository.saveAccountsBatch(items)
+                _uiState.value = _uiState.value.copy(isProcessing = false)
+                _message.emit("成功智能导入 $count 条账号密码！")
+                onComplete(count)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isProcessing = false)
+                _message.emit("智能导入失败: ${e.localizedMessage}")
+            }
+        }
     }
 }

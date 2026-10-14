@@ -99,4 +99,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             _snackbarMessage.emit("密码已复制 (将在30秒后自动清除剪贴板)")
         }
     }
+
+    fun importSmartAccounts(items: List<AccountItem>, onComplete: (Int) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val count = repository.saveAccountsBatch(items)
+                _snackbarMessage.emit("成功智能导入 $count 条账号密码")
+                onComplete(count)
+            } catch (e: Exception) {
+                _snackbarMessage.emit("导入失败: ${e.message}")
+            }
+        }
+    }
 }
