@@ -18,6 +18,8 @@ data class LockUiState(
     val isSetupMode: Boolean = false,
     val canUseBiometric: Boolean = false,
     val isBiometricAvailable: Boolean = false,
+    val hasSecurityQuestion: Boolean = false,
+    val securityQuestionText: String = "",
     val errorMessage: String = "",
     val unlockSuccess: Boolean = false
 )
@@ -38,16 +40,25 @@ class LockViewModel(application: Application) : AndroidViewModel(application) {
         val isSetup = !AppLockManager.isVaultSetup()
         val biometricAvailable = BiometricAuthHelper.isBiometricAvailable(getApplication())
         val canBio = AppLockManager.canUseBiometricUnlock()
+        val hasQuestion = AppLockManager.hasSecurityQuestion()
+        val questionText = AppLockManager.getSecurityQuestion()
 
         _uiState.value = _uiState.value.copy(
             isSetupMode = isSetup,
             canUseBiometric = canBio,
             isBiometricAvailable = biometricAvailable,
+            hasSecurityQuestion = hasQuestion,
+            securityQuestionText = questionText,
             errorMessage = ""
         )
     }
 
-    fun setupMasterPassword(password: String, enableBiometric: Boolean) {
+    fun setupMasterPassword(
+        password: String,
+        enableBiometric: Boolean,
+        question: String? = null,
+        answer: String? = null
+    ) {
         if (password.length < 6) {
             _uiState.value = _uiState.value.copy(errorMessage = "主密码长度至少为 6 位")
             return
@@ -55,7 +66,7 @@ class LockViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                AppLockManager.setupMasterPassword(password)
+                AppLockManager.setupMasterPassword(password, question, answer)
                 if (enableBiometric && _uiState.value.isBiometricAvailable) {
                     AppLockManager.setBiometricEnabled(true)
                 }
@@ -82,6 +93,27 @@ class LockViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun recoverWithSecurityQuestion(answer: String, newPassword: String, onResult: (Boolean, String) -> Unit) {
+        if (answer.isBlank()) {
+            onResult(false, "请输入密保答案")
+            return
+        }
+        if (newPassword.length < 6) {
+            onResult(false, "新主密码长度至少为 6 位")
+            return
+        }
+
+        viewModelScope.launch {
+            val success = AppLockManager.recoverWithSecurityQuestion(answer, newPassword)
+            if (success) {
+                _uiState.value = _uiState.value.copy(unlockSuccess = true, errorMessage = "")
+                onResult(true, "密码重置成功")
+            } else {
+                onResult(false, "密保答案不正确，请重新输入")
+            }
+        }
+    }
+
     fun triggerBiometricUnlock(activity: FragmentActivity) {
         if (!_uiState.value.canUseBiometric) return
 
@@ -95,13 +127,16 @@ class LockViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.value = _uiState.value.copy(errorMessage = "生物识别解密失败，请使用主密码")
                 }
             },
-            onError = { _, errString ->
-                // User may have canceled or selected negative button
-            },
+            onError = { _, _ -> },
             onFailed = {
                 _uiState.value = _uiState.value.copy(errorMessage = "指纹/面部识别未通过")
             }
         )
+    }
+
+    fun resetVaultData() {
+        AppLockManager.resetAllVaultData(getApplication())
+        checkLockState()
     }
 
     fun clearError() {

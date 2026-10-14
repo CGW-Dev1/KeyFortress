@@ -2,7 +2,6 @@ package com.keyfortress.app.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -51,19 +50,19 @@ object KeyStoreManager {
         val iv = cipher.iv
         val ciphertext = cipher.doFinal(masterKeyBytes)
 
-        val ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP)
-        val cipherBase64 = Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        val ivBase64 = CryptoManager.toBase64(iv)
+        val cipherBase64 = CryptoManager.toBase64(ciphertext)
         return Pair(cipherBase64, ivBase64)
     }
 
     fun decryptMasterKey(cipherBase64: String, ivBase64: String): ByteArray {
         val secretKey = getOrCreateBiometricKey()
         val cipher = Cipher.getInstance(AES_GCM_NOPADDING)
-        val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
+        val iv = CryptoManager.fromBase64(ivBase64)
         val spec = GCMParameterSpec(128, iv)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
 
-        val cipherBytes = Base64.decode(cipherBase64, Base64.NO_WRAP)
+        val cipherBytes = CryptoManager.fromBase64(cipherBase64)
         return cipher.doFinal(cipherBytes)
     }
 

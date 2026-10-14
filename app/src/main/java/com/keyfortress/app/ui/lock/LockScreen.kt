@@ -21,21 +21,24 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,7 +65,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.keyfortress.app.security.AppLockManager
+import com.keyfortress.app.ui.components.ConfirmDialog
 import com.keyfortress.app.ui.components.PasswordStrengthBar
+import com.keyfortress.app.ui.components.SecurityQuestionRecoveryDialog
 
 @Composable
 fun LockScreen(
@@ -93,14 +99,14 @@ fun LockScreen(
         color = MaterialTheme.colorScheme.background
     ) {
         if (uiState.isSetupMode) {
-            // First time launch: Setup Master Password
             SetupVaultView(
                 uiState = uiState,
-                onSetup = { pwd, bio -> viewModel.setupMasterPassword(pwd, bio) },
+                onSetup = { pwd, bio, q, a ->
+                    viewModel.setupMasterPassword(pwd, bio, q, a)
+                },
                 onClearError = { viewModel.clearError() }
             )
         } else {
-            // Routine unlock
             UnlockVaultView(
                 uiState = uiState,
                 onPasswordUnlock = { pwd ->
@@ -112,6 +118,12 @@ fun LockScreen(
                         viewModel.triggerBiometricUnlock(activity)
                     }
                 },
+                onRecoverWithQuestion = { answer, newPassword, onResult ->
+                    viewModel.recoverWithSecurityQuestion(answer, newPassword, onResult)
+                },
+                onResetVault = {
+                    viewModel.resetVaultData()
+                },
                 onClearError = { viewModel.clearError() }
             )
         }
@@ -121,15 +133,24 @@ fun LockScreen(
 @Composable
 private fun SetupVaultView(
     uiState: LockUiState,
-    onSetup: (password: String, enableBiometric: Boolean) -> Unit,
+    onSetup: (password: String, enableBiometric: Boolean, question: String?, answer: String?) -> Unit,
     onClearError: () -> Unit
 ) {
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var enableBiometric by remember { mutableStateOf(uiState.isBiometricAvailable) }
-    var localError by remember { mutableStateOf("") }
 
+    // Security Question state
+    var enableQuestion by remember { mutableStateOf(true) }
+    var selectedQuestion by remember { mutableStateOf(AppLockManager.PRESET_QUESTIONS[0]) }
+    var isCustomQuestion by remember { mutableStateOf(false) }
+    var customQuestion by remember { mutableStateOf("") }
+    var answer by remember { mutableStateOf("") }
+    var answerVisible by remember { mutableStateOf(false) }
+    var questionDropdownExpanded by remember { mutableStateOf(false) }
+
+    var localError by remember { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
     Column(
@@ -165,16 +186,16 @@ private fun SetupVaultView(
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = "首次使用请设置主密码。主密码用于派生 256 位加密密钥，零明文存储，请务必牢记！",
+            text = "首次使用请设置主密码。主密码用于派生 256 位加密密钥，零明文存储。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Master Password Input
         OutlinedTextField(
@@ -196,12 +217,13 @@ private fun SetupVaultView(
                     )
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
         )
 
         PasswordStrengthBar(password = password)
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Confirm Password Input
         OutlinedTextField(
@@ -215,11 +237,12 @@ private fun SetupVaultView(
             singleLine = true,
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
         )
 
         if (uiState.isBiometricAvailable) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -239,13 +262,130 @@ private fun SetupVaultView(
             }
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Security Question Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { enableQuestion = !enableQuestion },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = enableQuestion,
+                        onCheckedChange = { enableQuestion = it }
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "设置安全密保问题 (强烈推荐)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "用于忘记主密码时安全找回并重置密码",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (enableQuestion) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Question Selection
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = if (isCustomQuestion) "自定义问题..." else selectedQuestion,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("选择密保问题") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.clickable { questionDropdownExpanded = true }
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { questionDropdownExpanded = true },
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        DropdownMenu(
+                            expanded = questionDropdownExpanded,
+                            onDismissRequest = { questionDropdownExpanded = false }
+                        ) {
+                            AppLockManager.PRESET_QUESTIONS.forEach { q ->
+                                DropdownMenuItem(
+                                    text = { Text(q) },
+                                    onClick = {
+                                        selectedQuestion = q
+                                        isCustomQuestion = false
+                                        questionDropdownExpanded = false
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("自定义问题...") },
+                                onClick = {
+                                    isCustomQuestion = true
+                                    questionDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+
+                    if (isCustomQuestion) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = customQuestion,
+                            onValueChange = { customQuestion = it; localError = "" },
+                            label = { Text("输入自定义密保问题") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Answer
+                    OutlinedTextField(
+                        value = answer,
+                        onValueChange = { answer = it; localError = "" },
+                        label = { Text("输入密保答案") },
+                        singleLine = true,
+                        visualTransformation = if (answerVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { answerVisible = !answerVisible }) {
+                                Icon(
+                                    imageVector = if (answerVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            }
+        }
+
         val displayError = localError.ifEmpty { uiState.errorMessage }
         AnimatedVisibility(visible = displayError.isNotEmpty()) {
             Text(
                 text = displayError,
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 10.dp)
             )
         }
 
@@ -253,10 +393,17 @@ private fun SetupVaultView(
 
         Button(
             onClick = {
+                val finalQ = if (enableQuestion) {
+                    if (isCustomQuestion) customQuestion.trim() else selectedQuestion
+                } else null
+                val finalA = if (enableQuestion) answer.trim() else null
+
                 when {
                     password.length < 6 -> localError = "主密码长度至少为 6 位"
                     password != confirmPassword -> localError = "两次输入的密码不一致"
-                    else -> onSetup(password, enableBiometric)
+                    enableQuestion && finalQ.isNullOrBlank() -> localError = "请选择或填写密保问题"
+                    enableQuestion && finalA.isNullOrBlank() -> localError = "请填写密保答案"
+                    else -> onSetup(password, enableBiometric, finalQ, finalA)
                 }
             },
             modifier = Modifier
@@ -274,11 +421,52 @@ private fun UnlockVaultView(
     uiState: LockUiState,
     onPasswordUnlock: (String) -> Unit,
     onBiometricClick: () -> Unit,
+    onRecoverWithQuestion: (answer: String, newPassword: String, onResult: (Boolean, String) -> Unit) -> Unit,
+    onResetVault: () -> Unit,
     onClearError: () -> Unit
 ) {
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showPasswordInput by remember { mutableStateOf(!uiState.canUseBiometric) }
+
+    var showRecoveryDialog by remember { mutableStateOf(false) }
+    var recoveryError by remember { mutableStateOf("") }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showRecoveryDialog) {
+        SecurityQuestionRecoveryDialog(
+            questionText = uiState.securityQuestionText,
+            errorMessage = recoveryError,
+            onConfirm = { ans, newPwd ->
+                onRecoverWithQuestion(ans, newPwd) { success, msg ->
+                    if (success) {
+                        showRecoveryDialog = false
+                        recoveryError = ""
+                    } else {
+                        recoveryError = msg
+                    }
+                }
+            },
+            onDismiss = {
+                showRecoveryDialog = false
+                recoveryError = ""
+            }
+        )
+    }
+
+    if (showResetConfirmDialog) {
+        ConfirmDialog(
+            title = "清空并重置保险库",
+            message = "⚠️ 警告：重置将彻底删除本地所有已存密码和密钥，此操作无法撤销！确定要清空重置吗？",
+            confirmText = "清空重置",
+            isDestructive = true,
+            onConfirm = {
+                onResetVault()
+                showResetConfirmDialog = false
+            },
+            onDismiss = { showResetConfirmDialog = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -399,7 +587,7 @@ private fun UnlockVaultView(
             }
 
             if (uiState.canUseBiometric) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = {
                     showPasswordInput = false
                     onBiometricClick()
@@ -411,12 +599,34 @@ private fun UnlockVaultView(
             }
         }
 
+        // Forgot password / Security Question recovery options
+        if (uiState.hasSecurityQuestion) {
+            Spacer(modifier = Modifier.height(4.dp))
+            TextButton(onClick = {
+                recoveryError = ""
+                showRecoveryDialog = true
+            }) {
+                Icon(imageVector = Icons.Default.HelpOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("忘记主密码？使用密保找回")
+            }
+        } else {
+            Spacer(modifier = Modifier.height(4.dp))
+            TextButton(onClick = { showResetConfirmDialog = true }) {
+                Text(
+                    text = "忘记密码并重置保险库",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    fontSize = 12.sp
+                )
+            }
+        }
+
         AnimatedVisibility(visible = uiState.errorMessage.isNotEmpty()) {
             Text(
                 text = uiState.errorMessage,
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier.padding(top = 12.dp),
                 textAlign = TextAlign.Center
             )
         }

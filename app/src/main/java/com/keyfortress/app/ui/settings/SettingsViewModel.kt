@@ -24,6 +24,8 @@ data class SettingsUiState(
     val biometricEnabled: Boolean = false,
     val isBiometricHardwareAvailable: Boolean = false,
     val autoLockTimeout: Int = AppLockManager.TIMEOUT_30_SECONDS,
+    val hasSecurityQuestion: Boolean = false,
+    val securityQuestion: String = "",
     val isProcessing: Boolean = false
 )
 
@@ -45,11 +47,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val bioEnabled = AppLockManager.isBiometricEnabled()
         val bioAvailable = BiometricAuthHelper.isBiometricAvailable(getApplication())
         val timeout = AppLockManager.getAutoLockTimeout()
+        val hasQuestion = AppLockManager.hasSecurityQuestion()
+        val questionText = AppLockManager.getSecurityQuestion()
 
         _uiState.value = SettingsUiState(
             biometricEnabled = bioEnabled,
             isBiometricHardwareAvailable = bioAvailable,
-            autoLockTimeout = timeout
+            autoLockTimeout = timeout,
+            hasSecurityQuestion = hasQuestion,
+            securityQuestion = questionText
         )
     }
 
@@ -76,6 +82,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setSecurityQuestion(question: String, answer: String) {
+        val success = AppLockManager.setSecurityQuestion(question, answer)
+        if (success) {
+            _uiState.value = _uiState.value.copy(
+                hasSecurityQuestion = true,
+                securityQuestion = question
+            )
+            viewModelScope.launch {
+                _message.emit("密保问题设置成功！")
+            }
+        } else {
+            viewModelScope.launch {
+                _message.emit("密保问题设置失败，请先解锁保险库")
+            }
+        }
+    }
+
     fun changeMasterPassword(oldPassword: String, newPassword: String, onComplete: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             // First verify old password
@@ -86,12 +109,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }
 
             try {
-                // Re-setup with new password
-                AppLockManager.setupMasterPassword(newPassword)
-                if (_uiState.value.biometricEnabled) {
-                    AppLockManager.setBiometricEnabled(true)
+                val success = AppLockManager.changeMasterPasswordDirectly(newPassword)
+                if (success) {
+                    onComplete(true, "主密码修改成功")
+                } else {
+                    onComplete(false, "修改失败，密码长度至少 6 位")
                 }
-                onComplete(true, "主密码修改成功")
             } catch (e: Exception) {
                 onComplete(false, "修改失败: ${e.localizedMessage}")
             }

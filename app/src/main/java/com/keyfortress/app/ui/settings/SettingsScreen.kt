@@ -26,8 +26,10 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.NoEncryption
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
+import com.keyfortress.app.ui.components.SetSecurityQuestionDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -82,6 +84,18 @@ fun SettingsScreen(
 
     var showChangePasswordDialog by remember { mutableStateOf(false) }
     var showTimeoutDialog by remember { mutableStateOf(false) }
+    var showSecurityQuestionDialog by remember { mutableStateOf(false) }
+
+    if (showSecurityQuestionDialog) {
+        SetSecurityQuestionDialog(
+            initialQuestion = uiState.securityQuestion,
+            onConfirm = { q, a ->
+                viewModel.setSecurityQuestion(q, a)
+                showSecurityQuestionDialog = false
+            },
+            onDismiss = { showSecurityQuestionDialog = false }
+        )
+    }
 
     // SAF Launchers
     var pendingExportUri by remember { mutableStateOf<Uri?>(null) }
@@ -228,6 +242,17 @@ fun SettingsScreen(
                         title = "后台自动锁定",
                         subtitle = "退至后台后延迟锁定: $timeoutLabel",
                         onClick = { showTimeoutDialog = true }
+                    )
+
+                    SettingActionItem(
+                        icon = Icons.Default.QuestionAnswer,
+                        title = "安全密保问题",
+                        subtitle = if (uiState.hasSecurityQuestion) {
+                            "已设置: ${uiState.securityQuestion} (点击修改)"
+                        } else {
+                            "未设置 (点击设置密保防遗忘)"
+                        },
+                        onClick = { showSecurityQuestionDialog = true }
                     )
                 }
             }
