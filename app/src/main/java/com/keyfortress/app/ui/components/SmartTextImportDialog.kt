@@ -71,7 +71,7 @@ import com.keyfortress.app.data.model.CategoryConstants
 import com.keyfortress.app.data.repository.AccountItem
 import com.keyfortress.app.util.SmartTextParser
 
-private const val DEFAULT_SAMPLE_TEXT = """微信工作号：13800138000——WxPass#2026——绑定工作手机
+private const val DEFAULT_SAMPLE_TEXT = """微信：13800138000——WxPass#2026——常用社交账号
 公司堡垒机：dev_admin——Fortress@Secure99
 招商银行：6225880123456789——Bank#Pwd888——常用储蓄卡"""
 
@@ -568,7 +568,7 @@ fun SingleSmartParseDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     AssistChip(
                         onClick = {
-                            textInput = "微信工作号：13800138000——WxPass#2026——绑定工作手机"
+                            textInput = "微信：13800138000——WxPass#2026——常用社交账号"
                         },
                         label = { Text("填入示例") }
                     )

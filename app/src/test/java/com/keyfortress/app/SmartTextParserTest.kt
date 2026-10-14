@@ -10,7 +10,7 @@ class SmartTextParserTest {
     @Test
     fun testDashDelimitedExamples() {
         val input = """
-            微信工作号：13800138000——WxPass#2026——绑定工作手机
+            微信：13800138000——WxPass#2026——常用社交账号
             公司堡垒机：dev_admin——Fortress@Secure99
             招商银行：6225880123456789——Bank#Pwd888——常用储蓄卡
         """.trimIndent()
@@ -18,12 +18,12 @@ class SmartTextParserTest {
         val parsed = SmartTextParser.parse(input)
         assertEquals(3, parsed.size)
 
-        // Item 1: 微信工作号
+        // Item 1: 微信
         val item1 = parsed[0]
-        assertEquals("微信工作号", item1.title)
+        assertEquals("微信", item1.title)
         assertEquals("13800138000", item1.accountName)
         assertEquals("WxPass#2026", item1.password)
-        assertEquals("绑定工作手机", item1.notes)
+        assertEquals("常用社交账号", item1.notes)
         assertEquals(CategoryConstants.SOCIAL, item1.category)
 
         // Item 2: 公司堡垒机
