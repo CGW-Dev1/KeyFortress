@@ -1,11 +1,14 @@
 package com.keyfortress.app.data.repository
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import com.keyfortress.app.data.database.AppDatabase
 import com.keyfortress.app.data.entity.AccountEntity
+import com.keyfortress.app.data.entity.CategoryEntity
 import com.keyfortress.app.data.entity.PasswordHistoryEntity
 import com.keyfortress.app.data.model.AccountBackupItem
 import com.keyfortress.app.data.model.CategoryConstants
+import com.keyfortress.app.data.model.CustomField
 import com.keyfortress.app.data.model.EncryptedVaultContainer
 import com.keyfortress.app.data.model.HistoryBackupItem
 import com.keyfortress.app.data.model.VaultBackupPayload
@@ -17,8 +20,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.SecretKey
 
+@Immutable
 data class AccountItem(
     val id: Long = 0,
     val title: String,
@@ -27,11 +32,13 @@ data class AccountItem(
     val linkedContact: String = "",
     val category: String = CategoryConstants.OTHER,
     val notes: String = "",
+    val customFields: List<CustomField> = emptyList(),
     val isStarred: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Immutable
 data class HistoryItem(
     val id: Long = 0,
     val accountId: Long,
@@ -40,6 +47,21 @@ data class HistoryItem(
 )
 
 class AccountRepository(private val context: Context) {
+
+    private data class DecryptedCacheEntry(
+        val password: String,
+        val notes: String,
+        val customFields: List<CustomField>
+    )
+
+    companion object {
+        // High-performance in-memory cache keyed by "id:updatedAt" to eliminate AES-GCM CPU lag during scroll
+        private val decryptedCache = ConcurrentHashMap<String, DecryptedCacheEntry>()
+
+        fun clearDecryptedCache() {
+            decryptedCache.clear()
+        }
+    }
 
     private fun getDatabase(): AppDatabase {
         val key = AppLockManager.getActiveKey()
@@ -53,6 +75,24 @@ class AccountRepository(private val context: Context) {
     }
 
     private fun entityToItem(entity: AccountEntity): AccountItem {
+        val cacheKey = "${entity.id}:${entity.updatedAt}"
+        val cached = decryptedCache[cacheKey]
+        if (cached != null) {
+            return AccountItem(
+                id = entity.id,
+                title = entity.title,
+                accountName = entity.accountName,
+                password = cached.password,
+                linkedContact = entity.linkedContact,
+                category = entity.category,
+                notes = cached.notes,
+                customFields = cached.customFields,
+                isStarred = entity.isStarred,
+                createdAt = entity.createdAt,
+                updatedAt = entity.updatedAt
+            )
+        }
+
         val key = getSecretKey()
         val decryptedPassword = try {
             CryptoManager.decrypt(entity.passwordCipher, entity.passwordIv, key)
@@ -64,6 +104,18 @@ class AccountRepository(private val context: Context) {
         } catch (_: Exception) {
             ""
         }
+        val decryptedFields = try {
+            if (entity.customFieldsCipher.isNotBlank()) {
+                val json = CryptoManager.decrypt(entity.customFieldsCipher, entity.customFieldsIv, key)
+                CustomField.listFromJsonString(json)
+            } else {
+                emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        decryptedCache[cacheKey] = DecryptedCacheEntry(decryptedPassword, decryptedNotes, decryptedFields)
 
         return AccountItem(
             id = entity.id,
@@ -73,6 +125,7 @@ class AccountRepository(private val context: Context) {
             linkedContact = entity.linkedContact,
             category = entity.category,
             notes = decryptedNotes,
+            customFields = decryptedFields,
             isStarred = entity.isStarred,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt
@@ -84,8 +137,16 @@ class AccountRepository(private val context: Context) {
         val (pwdCipher, pwdIv) = CryptoManager.encrypt(item.password, key)
         val (notesCipher, notesIv) = CryptoManager.encrypt(item.notes, key)
 
+        val (cfCipher, cfIv) = if (item.customFields.isNotEmpty()) {
+            val json = CustomField.listToJsonString(item.customFields)
+            CryptoManager.encrypt(json, key)
+        } else {
+            Pair("", "")
+        }
+
+        val customFieldsSearch = item.customFields.joinToString(" ") { "${it.label} ${it.value}" }
         val searchTokens = PinyinHelper.getSearchTokens(
-            "${item.title} ${item.accountName} ${item.linkedContact} ${item.notes}"
+            "${item.title} ${item.accountName} ${item.linkedContact} ${item.notes} $customFieldsSearch"
         )
 
         return AccountEntity(
@@ -98,6 +159,8 @@ class AccountRepository(private val context: Context) {
             category = item.category,
             notesCipher = notesCipher,
             notesIv = notesIv,
+            customFieldsCipher = cfCipher,
+            customFieldsIv = cfIv,
             isStarred = item.isStarred,
             createdAt = item.createdAt,
             updatedAt = item.updatedAt,
@@ -168,13 +231,18 @@ class AccountRepository(private val context: Context) {
             }
         }
 
-        val entity = itemToEntity(item.copy(updatedAt = System.currentTimeMillis()))
-        if (item.id == 0L) {
+        val now = System.currentTimeMillis()
+        val entity = itemToEntity(item.copy(updatedAt = now))
+        val savedId = if (item.id == 0L) {
             db.accountDao().insert(entity)
         } else {
             db.accountDao().update(entity)
             item.id
         }
+
+        // Cache the newly saved entry
+        decryptedCache["$savedId:$now"] = DecryptedCacheEntry(item.password, item.notes, item.customFields)
+        savedId
     }
 
     suspend fun saveAccountsBatch(items: List<AccountItem>): Int = withContext(Dispatchers.IO) {
@@ -187,11 +255,82 @@ class AccountRepository(private val context: Context) {
     }
 
     suspend fun deleteAccount(id: Long) = withContext(Dispatchers.IO) {
-        getDatabase().accountDao().deleteById(id)
+        val db = getDatabase()
+        db.passwordHistoryDao().deleteByAccountId(id)
+        db.accountDao().deleteById(id)
+        decryptedCache.keys.filter { it.startsWith("$id:") }.forEach { decryptedCache.remove(it) }
+    }
+
+    suspend fun deleteAccountsBatch(ids: List<Long>) = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext
+        val db = getDatabase()
+        db.passwordHistoryDao().deleteByAccountIds(ids)
+        db.accountDao().deleteByIds(ids)
+        ids.forEach { id ->
+            decryptedCache.keys.filter { it.startsWith("$id:") }.forEach { decryptedCache.remove(it) }
+        }
     }
 
     suspend fun toggleStarred(id: Long, isStarred: Boolean) = withContext(Dispatchers.IO) {
         getDatabase().accountDao().updateStarred(id, isStarred)
+    }
+
+    // ================= Category Management =================
+    fun getCategoriesFlow(): Flow<List<CategoryEntity>> {
+        return getDatabase().categoryDao().getAllFlow()
+            .flowOn(Dispatchers.IO)
+    }
+
+    suspend fun getCategoriesList(): List<CategoryEntity> = withContext(Dispatchers.IO) {
+        getDatabase().categoryDao().getAll()
+    }
+
+    suspend fun addCategory(name: String): Boolean = withContext(Dispatchers.IO) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank() || trimmed == CategoryConstants.ALL || trimmed == CategoryConstants.STARRED) return@withContext false
+        val db = getDatabase()
+        val existing = db.categoryDao().getByName(trimmed)
+        if (existing != null) return@withContext false
+        val count = db.categoryDao().getCount()
+        db.categoryDao().insert(
+            CategoryEntity(
+                name = trimmed,
+                isDefault = false,
+                displayOrder = count + 1
+            )
+        )
+        true
+    }
+
+    suspend fun updateCategory(id: Long, oldName: String, newName: String): Boolean = withContext(Dispatchers.IO) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank() || trimmed == oldName || trimmed == CategoryConstants.ALL || trimmed == CategoryConstants.STARRED) return@withContext false
+        val db = getDatabase()
+        val cat = db.categoryDao().getById(id) ?: return@withContext false
+        if (cat.isDefault) return@withContext false
+        val existingWithNewName = db.categoryDao().getByName(trimmed)
+        if (existingWithNewName != null) return@withContext false
+
+        db.categoryDao().updateName(id, trimmed)
+        db.accountDao().updateCategoryName(oldName, trimmed)
+        true
+    }
+
+    /**
+     * Deletes category and moves all accounts under this category to default category ("其它").
+     */
+    suspend fun deleteCategory(id: Long): Boolean = withContext(Dispatchers.IO) {
+        val db = getDatabase()
+        val cat = db.categoryDao().getById(id) ?: return@withContext false
+        if (cat.isDefault) return@withContext false
+
+        val defaultCat = db.categoryDao().getDefaultCategory()
+        val defaultName = defaultCat?.name ?: CategoryConstants.OTHER
+
+        // Automatically move all accounts under this category to default category!
+        db.accountDao().updateCategoryName(cat.name, defaultName)
+        db.categoryDao().deleteById(id)
+        true
     }
 
     fun getPasswordHistoryFlow(accountId: Long): Flow<List<HistoryItem>> {
@@ -224,6 +363,13 @@ class AccountRepository(private val context: Context) {
         val backupItems = accounts.map { acc ->
             val pwd = try { CryptoManager.decrypt(acc.passwordCipher, acc.passwordIv, key) } catch (_: Exception) { "" }
             val notes = try { CryptoManager.decrypt(acc.notesCipher, acc.notesIv, key) } catch (_: Exception) { "" }
+            val customFields = try {
+                if (acc.customFieldsCipher.isNotBlank()) {
+                    val json = CryptoManager.decrypt(acc.customFieldsCipher, acc.customFieldsIv, key)
+                    CustomField.listFromJsonString(json)
+                } else emptyList()
+            } catch (_: Exception) { emptyList() }
+
             val histories = db.passwordHistoryDao().getByAccountId(acc.id).map { h ->
                 val oldPwd = try { CryptoManager.decrypt(h.oldPasswordCipher, h.oldPasswordIv, key) } catch (_: Exception) { "" }
                 HistoryBackupItem(oldPassword = oldPwd, changedAt = h.changedAt)
@@ -238,7 +384,8 @@ class AccountRepository(private val context: Context) {
                 isStarred = acc.isStarred,
                 createdAt = acc.createdAt,
                 updatedAt = acc.updatedAt,
-                history = histories
+                history = histories,
+                customFields = customFields
             )
         }
 
@@ -281,6 +428,7 @@ class AccountRepository(private val context: Context) {
                     linkedContact = item.linkedContact,
                     category = item.category,
                     notes = item.notes,
+                    customFields = item.customFields,
                     isStarred = item.isStarred,
                     createdAt = item.createdAt,
                     updatedAt = item.updatedAt

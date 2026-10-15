@@ -40,4 +40,7 @@ interface PasswordHistoryDao {
 
     @Query("DELETE FROM password_history WHERE account_id = :accountId")
     suspend fun deleteByAccountId(accountId: Long)
+
+    @Query("DELETE FROM password_history WHERE account_id IN (:accountIds)")
+    suspend fun deleteByAccountIds(accountIds: List<Long>)
 }

@@ -327,6 +327,7 @@ object AppLockManager {
         activeMasterKey = null
         _isLocked.value = true
         backgroundTimestamp = 0L
+        com.keyfortress.app.data.repository.AccountRepository.clearDecryptedCache()
         AppDatabase.closeInstance()
     }
 

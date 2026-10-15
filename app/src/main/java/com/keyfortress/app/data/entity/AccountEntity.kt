@@ -42,6 +42,12 @@ data class AccountEntity(
     @ColumnInfo(name = "notes_iv")
     val notesIv: String = "",
 
+    @ColumnInfo(name = "custom_fields_cipher")
+    val customFieldsCipher: String = "",
+
+    @ColumnInfo(name = "custom_fields_iv")
+    val customFieldsIv: String = "",
+
     @ColumnInfo(name = "is_starred")
     val isStarred: Boolean = false,
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Fingerprint
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.keyfortress.app.security.AppLockManager
+import com.keyfortress.app.ui.components.CategoryManagementDialog
 import com.keyfortress.app.ui.components.ClipboardImportDialog
 import com.keyfortress.app.ui.components.ExportVaultDialog
 import com.keyfortress.app.ui.components.ImportOptionsDialog
@@ -76,6 +78,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -87,6 +90,7 @@ fun SettingsScreen(
     var showChangePasswordDialog by remember { mutableStateOf(false) }
     var showTimeoutDialog by remember { mutableStateOf(false) }
     var showSecurityQuestionDialog by remember { mutableStateOf(false) }
+    var showCategoryManageDialog by remember { mutableStateOf(false) }
 
     // Export & Import Dialogs
     var showExportDialog by remember { mutableStateOf(false) }
@@ -244,6 +248,16 @@ fun SettingsScreen(
         )
     }
 
+    if (showCategoryManageDialog) {
+        CategoryManagementDialog(
+            categories = categories,
+            onAddCategory = { viewModel.addCategory(it) },
+            onUpdateCategory = { id, old, new -> viewModel.updateCategory(id, old, new) },
+            onDeleteCategory = { viewModel.deleteCategory(it) },
+            onDismiss = { showCategoryManageDialog = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -323,7 +337,27 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Section 2: Data Management
+            // Section 2: Category Management
+            SectionHeader(title = "分类设置")
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    SettingActionItem(
+                        icon = Icons.Default.Category,
+                        title = "自定义分类管理",
+                        subtitle = "新增、修改或删除分类（删除分类自动转移至「其它」）",
+                        onClick = { showCategoryManageDialog = true }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Section 3: Data Management
             SectionHeader(title = "数据备份与恢复")
 
             Card(
@@ -357,7 +391,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Section 3: Security & Privacy Principles
+            // Section 4: Security & Privacy Principles
             SectionHeader(title = "隐私保护与安全声明")
 
             Card(

@@ -3,8 +3,13 @@ package com.keyfortress.app.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -20,6 +25,7 @@ fun CategoryChipRow(
     categories: List<String> = CategoryConstants.FILTER_CATEGORIES,
     selectedCategory: String,
     onCategorySelected: (String) -> Unit,
+    onManageCategories: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -37,7 +43,7 @@ fun CategoryChipRow(
                     Icon(
                         imageVector = CategoryConstants.getCategoryIcon(category),
                         contentDescription = null,
-                        modifier = Modifier
+                        modifier = Modifier.size(16.dp)
                     )
                 },
                 colors = FilterChipDefaults.filterChipColors(
@@ -46,6 +52,25 @@ fun CategoryChipRow(
                     selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
+        }
+
+        if (onManageCategories != null) {
+            item {
+                AssistChip(
+                    onClick = onManageCategories,
+                    label = { Text("管理") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "分类管理",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        leadingIconContentColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
         }
     }
 }

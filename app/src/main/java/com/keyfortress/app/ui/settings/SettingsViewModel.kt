@@ -8,14 +8,17 @@ import com.keyfortress.app.data.repository.AccountItem
 import com.keyfortress.app.data.repository.AccountRepository
 import com.keyfortress.app.security.AppLockManager
 import com.keyfortress.app.security.BiometricAuthHelper
+import com.keyfortress.app.data.entity.CategoryEntity
 import com.keyfortress.app.util.BackupFileManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -40,8 +43,44 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _message = MutableSharedFlow<String>()
     val message: SharedFlow<String> = _message.asSharedFlow()
 
+    val categories: StateFlow<List<CategoryEntity>> = repository.getCategoriesFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         loadSettings()
+    }
+
+    fun addCategory(name: String) {
+        viewModelScope.launch {
+            val success = repository.addCategory(name)
+            if (success) {
+                _message.emit("分类「$name」创建成功")
+            } else {
+                _message.emit("创建分类失败（可能已存在同名分类）")
+            }
+        }
+    }
+
+    fun updateCategory(id: Long, oldName: String, newName: String) {
+        viewModelScope.launch {
+            val success = repository.updateCategory(id, oldName, newName)
+            if (success) {
+                _message.emit("分类修改成功")
+            } else {
+                _message.emit("修改分类失败（可能已存在同名分类）")
+            }
+        }
+    }
+
+    fun deleteCategory(id: Long) {
+        viewModelScope.launch {
+            val success = repository.deleteCategory(id)
+            if (success) {
+                _message.emit("分类已删除，原数据已移至「其它」")
+            } else {
+                _message.emit("删除分类失败")
+            }
+        }
     }
 
     fun loadSettings() {

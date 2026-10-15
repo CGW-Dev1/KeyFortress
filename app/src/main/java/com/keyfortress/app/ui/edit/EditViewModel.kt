@@ -3,13 +3,17 @@ package com.keyfortress.app.ui.edit
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.keyfortress.app.data.entity.CategoryEntity
 import com.keyfortress.app.data.model.CategoryConstants
+import com.keyfortress.app.data.model.CustomField
 import com.keyfortress.app.data.repository.AccountItem
 import com.keyfortress.app.data.repository.AccountRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class EditUiState(
@@ -20,6 +24,7 @@ data class EditUiState(
     val linkedContact: String = "",
     val category: String = CategoryConstants.SOCIAL,
     val notes: String = "",
+    val customFields: List<CustomField> = emptyList(),
     val isStarred: Boolean = false,
     val isEditMode: Boolean = false,
     val errorMessage: String = "",
@@ -34,6 +39,13 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(EditUiState())
     val uiState: StateFlow<EditUiState> = _uiState.asStateFlow()
 
+    val categories: StateFlow<List<CategoryEntity>> = repository.getCategoriesFlow()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     fun loadAccount(id: Long) {
         if (id == 0L) return
         viewModelScope.launch {
@@ -47,6 +59,7 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
                     linkedContact = acc.linkedContact,
                     category = acc.category,
                     notes = acc.notes,
+                    customFields = acc.customFields,
                     isStarred = acc.isStarred,
                     isEditMode = true
                 )
@@ -76,6 +89,40 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onNotesChange(notes: String) {
         _uiState.value = _uiState.value.copy(notes = notes)
+    }
+
+    // ================= Custom Fields =================
+    fun addCustomField(label: String, value: String, isSecured: Boolean) {
+        val trimmedLabel = label.trim()
+        val trimmedValue = value.trim()
+        if (trimmedLabel.isBlank()) return
+
+        val current = _uiState.value.customFields.toMutableList()
+        current.add(CustomField(label = trimmedLabel, value = trimmedValue, isSecured = isSecured))
+        _uiState.value = _uiState.value.copy(customFields = current)
+    }
+
+    fun updateCustomField(id: String, label: String, value: String, isSecured: Boolean) {
+        val current = _uiState.value.customFields.map {
+            if (it.id == id) it.copy(label = label.trim(), value = value.trim(), isSecured = isSecured) else it
+        }
+        _uiState.value = _uiState.value.copy(customFields = current)
+    }
+
+    fun removeCustomField(id: String) {
+        val current = _uiState.value.customFields.filterNot { it.id == id }
+        _uiState.value = _uiState.value.copy(customFields = current)
+    }
+
+    // ================= Category Addition =================
+    fun addCategory(name: String, onAdded: (String) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.addCategory(name)
+            if (success) {
+                _uiState.value = _uiState.value.copy(category = name)
+                onAdded(name)
+            }
+        }
     }
 
     fun applySmartParsed(title: String, accountName: String, password: String, notes: String, category: String) {
@@ -120,6 +167,7 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
                         linkedContact = state.linkedContact.trim(),
                         category = state.category,
                         notes = state.notes.trim(),
+                        customFields = state.customFields,
                         isStarred = state.isStarred
                     )
                 )
