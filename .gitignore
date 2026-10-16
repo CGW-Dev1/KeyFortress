@@ -10,3 +10,18 @@ captures/
 .cxx
 local.properties
 .kotlin/
+
+# Android build outputs & binaries (publish via GitHub Releases instead)
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Signing keys
+*.jks
+*.keystore
+
+# Logs & temp files
+*.log
+.system_generated/
