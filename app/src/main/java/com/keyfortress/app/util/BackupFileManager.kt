@@ -132,27 +132,57 @@ object BackupFileManager {
      */
     fun listLocalCsvFiles(context: Context): List<File> {
         val results = mutableListOf<File>()
-        try {
-            val dlDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (dlDir != null && dlDir.exists()) {
-                dlDir.listFiles { f -> f.isFile && f.extension.equals("csv", ignoreCase = true) }
-                    ?.let { results.addAll(it) }
+        val searchDirs = mutableListOf<File>()
 
-                val kfDir = File(dlDir, "KeyFortress")
-                if (kfDir.exists()) {
-                    kfDir.listFiles { f -> f.isFile && f.extension.equals("csv", ignoreCase = true) }
-                        ?.let { results.addAll(it) }
+        try {
+            val pubDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (pubDownloads != null && pubDownloads.exists()) searchDirs.add(pubDownloads)
+        } catch (_: Exception) {}
+
+        try {
+            val pubDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            if (pubDocs != null && pubDocs.exists()) searchDirs.add(pubDocs)
+        } catch (_: Exception) {}
+
+        try {
+            val extRoot = Environment.getExternalStorageDirectory()
+            if (extRoot != null && extRoot.exists()) {
+                searchDirs.add(File(extRoot, "Download"))
+                searchDirs.add(File(extRoot, "Downloads"))
+                searchDirs.add(File(extRoot, "Documents"))
+                searchDirs.add(File(extRoot, "tencent/QQfile_recv"))
+                searchDirs.add(File(extRoot, "tencent/MicroMsg/Download"))
+            }
+        } catch (_: Exception) {}
+
+        try {
+            context.getExternalFilesDir(null)?.let { searchDirs.add(it) }
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { searchDirs.add(it) }
+            context.filesDir?.let { searchDirs.add(it) }
+            context.cacheDir?.let { searchDirs.add(it) }
+        } catch (_: Exception) {}
+
+        val scannedDirs = mutableSetOf<String>()
+
+        fun scanDir(dir: File, depth: Int) {
+            if (depth > 2 || !dir.exists() || !dir.isDirectory || !dir.canRead()) return
+            val canonical = try { dir.canonicalPath } catch (_: Exception) { dir.absolutePath }
+            if (scannedDirs.contains(canonical)) return
+            scannedDirs.add(canonical)
+
+            val files = try { dir.listFiles() } catch (_: Exception) { null } ?: return
+            for (f in files) {
+                if (f.isFile && f.extension.equals("csv", ignoreCase = true)) {
+                    results.add(f)
+                } else if (f.isDirectory && depth < 2 && !f.name.startsWith(".")) {
+                    scanDir(f, depth + 1)
                 }
             }
-        } catch (_: Exception) {}
+        }
 
-        try {
-            val appDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "KeyFortress")
-            if (appDir.exists()) {
-                appDir.listFiles { f -> f.isFile && f.extension.equals("csv", ignoreCase = true) }
-                    ?.let { results.addAll(it) }
-            }
-        } catch (_: Exception) {}
+        for (d in searchDirs.distinctBy { it.absolutePath }) {
+            scanDir(d, 0)
+        }
 
         return results.distinctBy { it.absolutePath }.sortedByDescending { it.lastModified() }
     }
@@ -161,9 +191,17 @@ object BackupFileManager {
      * Reads text safely from a content URI with UTF-8 / BOM / GBK encoding auto-detection.
      */
     fun readCsvFromUri(context: Context, uri: Uri): String {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { stream ->
-            stream.readBytes()
-        } ?: throw IllegalStateException("无法读取选中的文件内容")
+        val bytes = try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                stream.readBytes()
+            }
+        } catch (_: Exception) {
+            null
+        } ?: if (uri.scheme == "file" && uri.path != null) {
+            File(uri.path!!).readBytes()
+        } else {
+            throw IllegalStateException("无法读取选中的文件内容")
+        }
         return decodeBytesToText(bytes)
     }
 
