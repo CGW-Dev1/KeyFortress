@@ -142,6 +142,7 @@ fun SmartTextImportDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var editingItem by remember { mutableStateOf<ParsedItemUiState?>(null) }
     var showLocalCsvDialog by remember { mutableStateOf(false) }
+    var showInAppBrowser by remember { mutableStateOf(false) }
     var detectedCsvFiles by remember { mutableStateOf<List<File>>(emptyList()) }
 
     val parsedList = remember { mutableStateListOf<ParsedItemUiState>() }
@@ -286,7 +287,7 @@ fun SmartTextImportDialog(
 
         if (!launched) {
             AppLockManager.isBypassingAutoLock = false
-            errorMessage = "系统未找到可用的文件选择器组件。您可以在微信/QQ/文件管理中打开 CSV 文件，长按复制内容后点击「粘贴剪贴板」导入。"
+            showInAppBrowser = true
         }
     }
 
@@ -754,8 +755,24 @@ fun SmartTextImportDialog(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    // Button 1: System File Manager
+                    // Button 1: Built-in In-App File Browser
                     Button(
+                        onClick = {
+                            showLocalCsvDialog = false
+                            showInAppBrowser = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("使用内置文件浏览器浏览 (推荐)")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Button 2: System File Manager (SAF)
+                    OutlinedButton(
                         onClick = {
                             showLocalCsvDialog = false
                             launchSystemFilePicker()
@@ -765,12 +782,12 @@ fun SmartTextImportDialog(
                     ) {
                         Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("打开系统文件选择器...")
+                        Text("调用系统文件管理器...")
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Button 2: Paste from clipboard
+                    // Button 3: Paste from clipboard
                     OutlinedButton(
                         onClick = {
                             showLocalCsvDialog = false
@@ -798,6 +815,27 @@ fun SmartTextImportDialog(
             dismissButton = {
                 TextButton(onClick = { showLocalCsvDialog = false }) {
                     Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showInAppBrowser) {
+        InAppFilePickerDialog(
+            onDismiss = { showInAppBrowser = false },
+            onFileSelected = { file ->
+                showInAppBrowser = false
+                try {
+                    val content = BackupFileManager.readCsvFromFile(file)
+                    if (content.isNotBlank()) {
+                        rawInputText = content
+                        errorMessage = null
+                        doParse(content)
+                    } else {
+                        errorMessage = "文件内容为空：${file.name}"
+                    }
+                } catch (e: Exception) {
+                    errorMessage = "读取文件失败：${e.localizedMessage}"
                 }
             }
         )
