@@ -44,44 +44,70 @@ object SmartTextParser {
         "英雄联盟", "游戏", "电影", "音乐", "acfun"
     )
 
-    fun inferCategory(title: String, notes: String = ""): String {
+    /**
+     * Infers category based on keywords in title and notes, constrained to [validCategories].
+     * If matched category is not in [validCategories], falls back to [CategoryConstants.OTHER] or the first available category.
+     */
+    fun inferCategory(title: String, notes: String = "", validCategories: List<String>? = null): String {
         val titleLower = title.lowercase()
-        val fromTitle = matchCategory(titleLower)
-        if (fromTitle != CategoryConstants.OTHER) {
+        val fromTitle = matchCategory(titleLower, validCategories)
+        if (fromTitle != null) {
             return fromTitle
         }
         val notesLower = notes.lowercase()
-        return matchCategory(notesLower)
+        val fromNotes = matchCategory(notesLower, validCategories)
+        if (fromNotes != null) {
+            return fromNotes
+        }
+        return getFallbackCategory(validCategories)
     }
 
-    private fun matchCategory(text: String): String {
-        return when {
-            WORK_KEYWORDS.any { text.contains(it) } -> CategoryConstants.WORK
-            FINANCE_KEYWORDS.any { text.contains(it) } -> CategoryConstants.FINANCE
-            SOCIAL_KEYWORDS.any { text.contains(it) } -> CategoryConstants.SOCIAL
-            ENTERTAINMENT_KEYWORDS.any { text.contains(it) } -> CategoryConstants.ENTERTAINMENT
-            else -> CategoryConstants.OTHER
+    private fun matchCategory(text: String, validCategories: List<String>?): String? {
+        val isCategoryValid: (String) -> Boolean = { cat ->
+            validCategories == null || validCategories.isEmpty() || validCategories.contains(cat)
         }
+
+        return when {
+            WORK_KEYWORDS.any { text.contains(it) } && isCategoryValid(CategoryConstants.WORK) -> CategoryConstants.WORK
+            FINANCE_KEYWORDS.any { text.contains(it) } && isCategoryValid(CategoryConstants.FINANCE) -> CategoryConstants.FINANCE
+            SOCIAL_KEYWORDS.any { text.contains(it) } && isCategoryValid(CategoryConstants.SOCIAL) -> CategoryConstants.SOCIAL
+            ENTERTAINMENT_KEYWORDS.any { text.contains(it) } && isCategoryValid(CategoryConstants.ENTERTAINMENT) -> CategoryConstants.ENTERTAINMENT
+            else -> null
+        }
+    }
+
+    private fun getFallbackCategory(validCategories: List<String>?): String {
+        if (validCategories.isNullOrEmpty()) {
+            return CategoryConstants.OTHER
+        }
+        return validCategories.firstOrNull { it == CategoryConstants.OTHER }
+            ?: validCategories.first()
     }
 
     /**
      * Parses batch text into a list of [ParsedAccount].
-     * Supports line-by-line format (e.g. 平台：账号——密码——备注),
-     * table/CSV/TSV format, and multi-line block format.
+     * Supports Google Chrome / Browser CSV, line-by-line format (e.g. 平台：账号——密码——备注),
+     * table/TSV format, and multi-line block format.
      */
-    fun parse(input: String): List<ParsedAccount> {
+    fun parse(input: String, validCategories: List<String>? = null): List<ParsedAccount> {
         val normalized = input.replace("\r\n", "\n").replace('\r', '\n').trim()
         if (normalized.isBlank()) return emptyList()
+
+        // 1. Check if input is Google / Browser Passwords CSV
+        if (GoogleCsvParser.isGoogleCsv(normalized)) {
+            val csvResult = GoogleCsvParser.parse(normalized, validCategories)
+            if (csvResult.isNotEmpty()) return csvResult
+        }
 
         val lines = normalized.lines().map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return emptyList()
 
-        // Check if input is block-formatted (multiple lines per entry separated by empty line or dashes)
+        // 2. Check if input is block-formatted (multiple lines per entry separated by empty line or dashes)
         if (isBlockFormat(lines)) {
             val blocks = normalized.split(Regex("\n\\s*\\n|^-{3,}$|^={3,}$", RegexOption.MULTILINE))
             val result = mutableListOf<ParsedAccount>()
             for (block in blocks) {
-                val parsed = parseBlock(block.trim())
+                val parsed = parseBlock(block.trim(), validCategories)
                 if (parsed != null && (parsed.title.isNotBlank() || parsed.accountName.isNotBlank())) {
                     result.add(parsed)
                 }
@@ -89,12 +115,12 @@ object SmartTextParser {
             if (result.isNotEmpty()) return result
         }
 
-        // Line by line parsing
+        // 3. Line by line parsing
         val results = mutableListOf<ParsedAccount>()
         for (line in lines) {
             // Skip pure comment lines
             if (line.startsWith("#") || line.startsWith("//")) continue
-            val item = parseLine(line)
+            val item = parseLine(line, validCategories)
             if (item.title.isNotBlank() || item.accountName.isNotBlank() || item.password.isNotBlank()) {
                 results.add(item)
             }
@@ -113,7 +139,7 @@ object SmartTextParser {
         return labelCount >= 3 && lines.none { it.contains("——") || it.contains("\t") }
     }
 
-    private fun parseBlock(block: String): ParsedAccount? {
+    private fun parseBlock(block: String, validCategories: List<String>? = null): ParsedAccount? {
         val lines = block.lines().map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
 
@@ -143,7 +169,7 @@ object SmartTextParser {
             accountName = account,
             password = password,
             notes = notes,
-            category = inferCategory(title, notes),
+            category = inferCategory(title, notes, validCategories),
             rawText = block
         )
     }
@@ -151,7 +177,7 @@ object SmartTextParser {
     /**
      * Parses a single line into a [ParsedAccount].
      */
-    fun parseLine(line: String): ParsedAccount {
+    fun parseLine(line: String, validCategories: List<String>? = null): ParsedAccount {
         val trimmed = line.trim()
 
         // 1. Check if line has inline explicit labels: e.g. 平台:xxx 账号:yyy 密码:zzz
@@ -170,7 +196,7 @@ object SmartTextParser {
                 accountName = a,
                 password = p,
                 notes = n,
-                category = inferCategory(t, n),
+                category = inferCategory(t, n, validCategories),
                 rawText = trimmed
             )
         }
@@ -183,7 +209,7 @@ object SmartTextParser {
 
             // If prefix is literally just the word "平台" or "名称", treat rest as the whole payload
             if (titleCandidate == "平台" || titleCandidate == "名称" || titleCandidate == "应用") {
-                return parseLineWithoutColon(rest, trimmed)
+                return parseLineWithoutColon(rest, trimmed, validCategories)
             }
 
             val tokens = splitTokens(rest)
@@ -226,16 +252,16 @@ object SmartTextParser {
                 accountName = accountName,
                 password = password,
                 notes = notes,
-                category = inferCategory(title, notes),
+                category = inferCategory(title, notes, validCategories),
                 rawText = trimmed
             )
         }
 
         // 3. Line without colon: e.g. 平台——账号——密码——备注 or 平台\t账号\t密码\t备注
-        return parseLineWithoutColon(trimmed, trimmed)
+        return parseLineWithoutColon(trimmed, trimmed, validCategories)
     }
 
-    private fun parseLineWithoutColon(text: String, originalLine: String): ParsedAccount {
+    private fun parseLineWithoutColon(text: String, originalLine: String, validCategories: List<String>? = null): ParsedAccount {
         val tokens = splitTokens(text)
         val title: String
         val accountName: String
@@ -286,7 +312,7 @@ object SmartTextParser {
             accountName = accountName,
             password = password,
             notes = notes,
-            category = inferCategory(title, notes),
+            category = inferCategory(title, notes, validCategories),
             rawText = originalLine
         )
     }

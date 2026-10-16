@@ -215,6 +215,7 @@ fun SettingsScreen(
 
     if (showSmartImportDialog) {
         SmartTextImportDialog(
+            categories = categories.map { it.name },
             onDismiss = { showSmartImportDialog = false },
             onConfirmImport = { items ->
                 viewModel.importSmartAccounts(items) {
@@ -382,8 +383,8 @@ fun SettingsScreen(
 
                     SettingActionItem(
                         icon = Icons.Default.AutoAwesome,
-                        title = "智能文本导入",
-                        subtitle = "批量粘贴任意文本，自动识别账号密码并分类",
+                        title = "智能文本与谷歌 CSV 导入",
+                        subtitle = "批量粘贴或导入 Google CSV，自动识别账号密码并分类",
                         onClick = { showSmartImportDialog = true }
                     )
                 }
@@ -430,7 +431,7 @@ fun SettingsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "KeyFortress v1.0.0",
+                    text = "KeyFortress v${com.keyfortress.app.BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

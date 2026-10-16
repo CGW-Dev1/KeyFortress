@@ -103,4 +103,77 @@ class SmartTextParserTest {
         assertEquals("个人开源", parsed.notes)
         assertEquals(CategoryConstants.WORK, parsed.category)
     }
+
+    @Test
+    fun testGoogleCsvImportStandard() {
+        val csv = """
+            name,url,username,password,note
+            Google,https://accounts.google.com,testuser@gmail.com,MySecretPass123,
+            GitHub,https://github.com/login,octocat,ghp_mytoken456,开源工作开发账号
+            "Taobao, Inc.",https://www.taobao.com,tb_shopper,TbPassword888,
+        """.trimIndent()
+
+        val parsed = SmartTextParser.parse(csv)
+        assertEquals(3, parsed.size)
+
+        // Item 1: Google
+        assertEquals("Google", parsed[0].title)
+        assertEquals("testuser@gmail.com", parsed[0].accountName)
+        assertEquals("MySecretPass123", parsed[0].password)
+        assertEquals("https://accounts.google.com", parsed[0].notes)
+
+        // Item 2: GitHub (note merged with url)
+        assertEquals("GitHub", parsed[1].title)
+        assertEquals("octocat", parsed[1].accountName)
+        assertEquals("ghp_mytoken456", parsed[1].password)
+        assertEquals("https://github.com/login\n开源工作开发账号", parsed[1].notes)
+        assertEquals(CategoryConstants.WORK, parsed[1].category)
+
+        // Item 3: Taobao with quotes and comma
+        assertEquals("Taobao, Inc.", parsed[2].title)
+        assertEquals("tb_shopper", parsed[2].accountName)
+        assertEquals("TbPassword888", parsed[2].password)
+        assertEquals("https://www.taobao.com", parsed[2].notes)
+    }
+
+    @Test
+    fun testGoogleCsvMissingNameFallbackToUrl() {
+        val csv = """
+            name,url,username,password
+            ,https://bilibili.com/login,bili_user,bili_pass
+        """.trimIndent()
+
+        val parsed = SmartTextParser.parse(csv)
+        assertEquals(1, parsed.size)
+        assertEquals("bilibili.com", parsed[0].title)
+        assertEquals("bili_user", parsed[0].accountName)
+        assertEquals("bili_pass", parsed[0].password)
+        assertEquals("https://bilibili.com/login", parsed[0].notes)
+    }
+
+    @Test
+    fun testCategoryMatchingWithoutEntertainment() {
+        val categoriesWithoutEntertainment = listOf("社交", "金融", "工作", "其它")
+
+        // When entertainment is NOT in validCategories, bilibili should fall back to 其它
+        val cat1 = SmartTextParser.inferCategory("哔哩哔哩", validCategories = categoriesWithoutEntertainment)
+        assertEquals("其它", cat1)
+
+        // When entertainment IS present, it should infer 娱乐
+        val categoriesWithEntertainment = listOf("社交", "金融", "工作", "娱乐", "其它")
+        val cat2 = SmartTextParser.inferCategory("哔哩哔哩", validCategories = categoriesWithEntertainment)
+        assertEquals("娱乐", cat2)
+
+        // In Google CSV parsing with category constraint
+        val csv = """
+            name,url,username,password
+            哔哩哔哩,https://bilibili.com,user1,pass1
+            微信,https://weixin.qq.com,user2,pass2
+        """.trimIndent()
+
+        val parsed = SmartTextParser.parse(csv, validCategories = categoriesWithoutEntertainment)
+        assertEquals(2, parsed.size)
+        assertEquals("其它", parsed[0].category)
+        assertEquals("社交", parsed[1].category)
+    }
 }

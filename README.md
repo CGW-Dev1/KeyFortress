@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/UI-Jetpack_Compose_(Material_3)-4285F4?logo=jetpackcompose&logoColor=white" alt="Compose" />
   <img src="https://img.shields.io/badge/Security-AES--256--GCM_%2B_SQLCipher-red" alt="Security" />
   <img src="https://img.shields.io/badge/Network-Zero_Permissions-brightgreen" alt="No Internet" />
-  <img src="https://img.shields.io/badge/Release-v1.0.0-blue" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.1.0-blue" alt="Release" />
 </p>
 
 > **安全 · 离线 · 纯粹**  
@@ -48,9 +48,11 @@ KeyFortress 将安全性作为产品的生命线，严格贯彻底层原生防�
 - ⚡ **极致流畅度架构**：
   - **列表零解密策略**：列表浏览与实时搜索时绕过高耗能的 AES-256 密文解密，毫秒级响应，数千条记录满帧 120 FPS 顺滑滑动；
   - **精准按需解密**：点击“复制密码”或进入详情页时才在协程中按需单条瞬时解密。
-- 🪄 **智能文本批量导入**：
-  - 支持从微信记录、Excel/CSV 表格、备忘录等任意杂乱文本中一键粘贴；
-  - 异步后台协程智能识别平台、账号、密码及备注，自动推导所属分类；
+- 🪄 **智能文本与谷歌 CSV 批量导入**：
+  - **谷歌密码 CSV 原生支持**：深度适配 Google Chrome / Google Password Manager 导出的标准 CSV，`name` 映射为平台名称，`username` 映射为账号，`password` 映射为密码，`url` 智能保存在备注信息中；
+  - **本地 CSV 文件一键载入**：支持直接在导入弹窗中通过系统文件选择器选取 `.csv` 文本文件并秒级解析；
+  - **分类动态严格对齐**：智能分类推断与条目修改全面绑定用户当前数据库中的实际分类，绝不产生或展示已删除的分类（如用户删除了“娱乐”分类，相关服务自动平滑降级至默认分类）；
+  - **全格式兼容**：同时支持“平台：账号——密码——备注”、表格多列制表符（TSV）、键值对块等多格式模糊容错；
   - 极轻量卡片预览与实时编辑微调，单次 SQLite 事务秒级批量入库。
 - 🗂️ **动态自定义分类 & 防丢失迁移**：
   - 支持自主添加、重命名与删除自定义分类标签；
@@ -192,7 +194,7 @@ cd KeyFortress
 ## 📥 下载安装
 
 最新打包的独立 APK 安装包已发布于 GitHub Releases：
-- 🚀 **[直接下载 KeyFortress-v1.0.0.apk (33.7MB)](https://github.com/CGW-Dev1/KeyFortress/releases/download/v1.0.0/KeyFortress-v1.0.0.apk)**
+- 🚀 **[直接下载最新 KeyFortress-v1.1.0.apk (25.4MB - 已签名直接安装)](https://github.com/CGW-Dev1/KeyFortress/releases/download/v1.1.0/KeyFortress-v1.1.0.apk)**
 - 📦 **[查看全部 Releases 发布记录与版本日志](https://github.com/CGW-Dev1/KeyFortress/releases)**
 
 ---

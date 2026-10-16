@@ -341,6 +341,7 @@ fun HomeScreen(
 
     if (showSmartImportDialog) {
         SmartTextImportDialog(
+            categories = categories.map { it.name },
             onDismiss = { showSmartImportDialog = false },
             onConfirmImport = { items ->
                 viewModel.importSmartAccounts(items) {

@@ -120,6 +120,7 @@ fun EditScreen(
 
     if (showSmartParseDialog) {
         SingleSmartParseDialog(
+            categories = categories.map { it.name },
             onDismiss = { showSmartParseDialog = false },
             onParsed = { title, account, password, notes, category ->
                 viewModel.applySmartParsed(title, account, password, notes, category)

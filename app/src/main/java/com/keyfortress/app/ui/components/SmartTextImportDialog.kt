@@ -2,6 +2,9 @@ package com.keyfortress.app.ui.components
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
@@ -86,6 +90,11 @@ private const val DEFAULT_SAMPLE_TEXT = """微信：13800138000——WxPass#2026
 公司堡垒机：dev_admin——Fortress@Secure99
 招商银行：6225880123456789——Bank#Pwd888——常用储蓄卡"""
 
+private const val GOOGLE_CSV_SAMPLE_TEXT = """name,url,username,password,note
+Google,https://accounts.google.com,testuser@gmail.com,GooglePass#2026,个人主账号
+GitHub,https://github.com/login,octocat,ghp_secureToken123,开源工作开发账号
+招商银行,https://www.cmbchina.com,6225880123456789,Cmb#Pass888,常用储蓄卡"""
+
 data class ParsedItemUiState(
     val id: String = java.util.UUID.randomUUID().toString(),
     var title: String = "",
@@ -105,11 +114,19 @@ private enum class ImportStep {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmartTextImportDialog(
+    categories: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onConfirmImport: (List<AccountItem>) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    val availableCategories = remember(categories) {
+        if (categories.isNotEmpty()) categories else CategoryConstants.DEFAULT_CATEGORIES
+    }
+    val defaultCategory = remember(availableCategories) {
+        availableCategories.firstOrNull { it == CategoryConstants.OTHER } ?: availableCategories.first()
+    }
 
     var currentStep by remember { mutableStateOf(ImportStep.INPUT) }
     var rawInputText by remember { mutableStateOf("") }
@@ -128,9 +145,9 @@ fun SmartTextImportDialog(
         errorMessage = null
 
         coroutineScope.launch {
-            // Run heavy regex parsing in background thread to prevent UI freezing on large pastes
+            // Run heavy regex & CSV parsing in background thread to prevent UI freezing on large pastes
             val results = withContext(Dispatchers.Default) {
-                SmartTextParser.parse(text)
+                SmartTextParser.parse(text, validCategories = availableCategories)
             }
             if (results.isEmpty()) {
                 errorMessage = "未能识别出有效的账号密码信息，请检查文本格式"
@@ -138,12 +155,17 @@ fun SmartTextImportDialog(
                 return@launch
             }
             val mapped = results.map { parsed ->
+                val cat = if (availableCategories.contains(parsed.category)) {
+                    parsed.category
+                } else {
+                    defaultCategory
+                }
                 ParsedItemUiState(
                     title = parsed.title,
                     accountName = parsed.accountName,
                     password = parsed.password,
                     notes = parsed.notes,
-                    category = parsed.category,
+                    category = cat,
                     isSelected = true
                 )
             }
@@ -151,6 +173,27 @@ fun SmartTextImportDialog(
             parsedList.addAll(mapped)
             isParsing = false
             currentStep = ImportStep.PREVIEW
+        }
+    }
+
+    val csvPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val content = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).readText()
+                }
+                if (!content.isNullOrBlank()) {
+                    rawInputText = content
+                    errorMessage = null
+                    doParse(content)
+                } else {
+                    errorMessage = "所选文件内容为空"
+                }
+            } catch (e: Exception) {
+                errorMessage = "读取文件失败：${e.localizedMessage}"
+            }
         }
     }
 
@@ -222,13 +265,13 @@ fun SmartTextImportDialog(
                             .fillMaxWidth()
                     ) {
                         Text(
-                            text = "💡 支持各种常见格式，例如：",
+                            text = "💡 支持各种常见格式与谷歌 CSV 导入：",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "• 平台：账号——密码——备注\n• 平台\\t账号\\t密码 (从表格直接复制)\n• 平台:xxx 账号:xxx 密码:xxx\n• 空格、逗号、破折号分隔，智能判断",
+                            text = "• 谷歌/浏览器导出的 CSV 文件 (name,url,username,password,note)\n• 平台：账号——密码——备注\n• 平台\\t账号\\t密码 (从表格直接复制)\n• 平台:xxx 账号:xxx 密码:xxx",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 18.sp,
@@ -237,44 +280,70 @@ fun SmartTextImportDialog(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Quick buttons
-                        Row(
+                        // Quick buttons (scrollable horizontally)
+                        LazyRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AssistChip(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = clipboard.primaryClip
-                                    if (clip != null && clip.itemCount > 0) {
-                                        val text = clip.getItemAt(0).coerceToText(context).toString()
-                                        rawInputText = text
-                                        errorMessage = null
-                                    }
-                                },
-                                leadingIcon = {
-                                    Icon(imageVector = Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
-                                label = { Text("粘贴剪贴板") }
-                            )
+                            item {
+                                AssistChip(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val clip = clipboard.primaryClip
+                                        if (clip != null && clip.itemCount > 0) {
+                                            val text = clip.getItemAt(0).coerceToText(context).toString()
+                                            rawInputText = text
+                                            errorMessage = null
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(imageVector = Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    label = { Text("粘贴剪贴板") }
+                                )
+                            }
 
-                            AssistChip(
-                                onClick = {
-                                    rawInputText = DEFAULT_SAMPLE_TEXT
-                                    errorMessage = null
-                                },
-                                leadingIcon = {
-                                    Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
-                                label = { Text("填入示例") }
-                            )
+                            item {
+                                AssistChip(
+                                    onClick = { csvPickerLauncher.launch("*/*") },
+                                    leadingIcon = {
+                                        Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    label = { Text("选择 CSV 文件") }
+                                )
+                            }
+
+                            item {
+                                AssistChip(
+                                    onClick = {
+                                        rawInputText = DEFAULT_SAMPLE_TEXT
+                                        errorMessage = null
+                                    },
+                                    leadingIcon = {
+                                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    label = { Text("常规示例") }
+                                )
+                            }
+
+                            item {
+                                AssistChip(
+                                    onClick = {
+                                        rawInputText = GOOGLE_CSV_SAMPLE_TEXT
+                                        errorMessage = null
+                                    },
+                                    label = { Text("谷歌CSV示例") }
+                                )
+                            }
 
                             if (rawInputText.isNotEmpty()) {
-                                AssistChip(
-                                    onClick = { rawInputText = "" },
-                                    label = { Text("清空") }
-                                )
+                                item {
+                                    AssistChip(
+                                        onClick = { rawInputText = "" },
+                                        label = { Text("清空") }
+                                    )
+                                }
                             }
                         }
 
@@ -475,6 +544,7 @@ fun SmartTextImportDialog(
         val target = editingItem!!
         EditParsedItemDialog(
             item = target,
+            availableCategories = availableCategories,
             onDismiss = { editingItem = null },
             onSave = { updated ->
                 val idx = parsedList.indexOfFirst { it.id == target.id }
@@ -668,6 +738,7 @@ private fun CompactParsedCard(
 @Composable
 private fun EditParsedItemDialog(
     item: ParsedItemUiState,
+    availableCategories: List<String>,
     onDismiss: () -> Unit,
     onSave: (ParsedItemUiState) -> Unit
 ) {
@@ -675,7 +746,12 @@ private fun EditParsedItemDialog(
     var accountName by remember { mutableStateOf(item.accountName) }
     var password by remember { mutableStateOf(item.password) }
     var notes by remember { mutableStateOf(item.notes) }
-    var category by remember { mutableStateOf(item.category) }
+    var category by remember {
+        mutableStateOf(
+            if (availableCategories.contains(item.category)) item.category
+            else availableCategories.firstOrNull { it == CategoryConstants.OTHER } ?: availableCategories.firstOrNull() ?: CategoryConstants.OTHER
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -692,7 +768,7 @@ private fun EditParsedItemDialog(
 
                 Text("分类：", style = MaterialTheme.typography.bodySmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(CategoryConstants.DEFAULT_CATEGORIES) { cat ->
+                    items(availableCategories) { cat ->
                         FilterChip(
                             selected = category == cat,
                             onClick = { category = cat },
@@ -757,6 +833,7 @@ private fun EditParsedItemDialog(
  */
 @Composable
 fun SingleSmartParseDialog(
+    categories: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onParsed: (title: String, account: String, password: String, notes: String, category: String) -> Unit
 ) {
@@ -814,7 +891,7 @@ fun SingleSmartParseDialog(
             Button(
                 onClick = {
                     if (textInput.isNotBlank()) {
-                        val parsed = SmartTextParser.parseLine(textInput)
+                        val parsed = SmartTextParser.parseLine(textInput, validCategories = categories.ifEmpty { null })
                         onParsed(parsed.title, parsed.accountName, parsed.password, parsed.notes, parsed.category)
                     }
                 },
