@@ -126,4 +126,78 @@ object BackupFileManager {
 
         return results.sortedByDescending { it.lastModified() }
     }
+
+    /**
+     * Scans known directories for existing .csv files on this device.
+     */
+    fun listLocalCsvFiles(context: Context): List<File> {
+        val results = mutableListOf<File>()
+        try {
+            val dlDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (dlDir != null && dlDir.exists()) {
+                dlDir.listFiles { f -> f.isFile && f.extension.equals("csv", ignoreCase = true) }
+                    ?.let { results.addAll(it) }
+
+                val kfDir = File(dlDir, "KeyFortress")
+                if (kfDir.exists()) {
+                    kfDir.listFiles { f -> f.isFile && f.extension.equals("csv", ignoreCase = true) }
+                        ?.let { results.addAll(it) }
+                }
+            }
+        } catch (_: Exception) {}
+
+        try {
+            val appDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "KeyFortress")
+            if (appDir.exists()) {
+                appDir.listFiles { f -> f.isFile && f.extension.equals("csv", ignoreCase = true) }
+                    ?.let { results.addAll(it) }
+            }
+        } catch (_: Exception) {}
+
+        return results.distinctBy { it.absolutePath }.sortedByDescending { it.lastModified() }
+    }
+
+    /**
+     * Reads text safely from a content URI with UTF-8 / BOM / GBK encoding auto-detection.
+     */
+    fun readCsvFromUri(context: Context, uri: Uri): String {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { stream ->
+            stream.readBytes()
+        } ?: throw IllegalStateException("无法读取选中的文件内容")
+        return decodeBytesToText(bytes)
+    }
+
+    /**
+     * Reads text safely from a File with UTF-8 / BOM / GBK encoding auto-detection.
+     */
+    fun readCsvFromFile(file: File): String {
+        val bytes = file.readBytes()
+        return decodeBytesToText(bytes)
+    }
+
+    /**
+     * Decodes byte array to string with UTF-8, UTF-8 BOM, and GB18030 / GBK fallback.
+     */
+    fun decodeBytesToText(bytes: ByteArray): String {
+        if (bytes.isEmpty()) return ""
+        // Check for UTF-8 BOM: 0xEF, 0xBB, 0xBF
+        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        }
+        // Try strict UTF-8 decoding
+        try {
+            val decoder = Charsets.UTF_8.newDecoder()
+            decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            val byteBuffer = java.nio.ByteBuffer.wrap(bytes)
+            return decoder.decode(byteBuffer).toString()
+        } catch (_: Exception) {
+            // Fallback to GB18030 (which is backward compatible with GBK and GB2312)
+            try {
+                return String(bytes, java.nio.charset.Charset.forName("GB18030"))
+            } catch (_: Exception) {
+                return String(bytes, Charsets.UTF_8)
+            }
+        }
+    }
 }

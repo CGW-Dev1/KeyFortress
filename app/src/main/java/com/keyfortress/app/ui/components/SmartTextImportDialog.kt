@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,11 +35,16 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import com.keyfortress.app.security.AppLockManager
+import com.keyfortress.app.util.BackupFileManager
+import com.keyfortress.app.util.TimeFormatter
+import java.io.File
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -133,6 +139,8 @@ fun SmartTextImportDialog(
     var isParsing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var editingItem by remember { mutableStateOf<ParsedItemUiState?>(null) }
+    var showLocalCsvDialog by remember { mutableStateOf(false) }
+    var detectedCsvFiles by remember { mutableStateOf<List<File>>(emptyList()) }
 
     val parsedList = remember { mutableStateListOf<ParsedItemUiState>() }
 
@@ -176,15 +184,14 @@ fun SmartTextImportDialog(
         }
     }
 
-    val csvPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+    val openDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
+        AppLockManager.isBypassingAutoLock = false
         if (uri != null) {
             try {
-                val content = context.contentResolver.openInputStream(uri)?.use { stream ->
-                    stream.bufferedReader(Charsets.UTF_8).readText()
-                }
-                if (!content.isNullOrBlank()) {
+                val content = BackupFileManager.readCsvFromUri(context, uri)
+                if (content.isNotBlank()) {
                     rawInputText = content
                     errorMessage = null
                     doParse(content)
@@ -193,6 +200,40 @@ fun SmartTextImportDialog(
                 }
             } catch (e: Exception) {
                 errorMessage = "读取文件失败：${e.localizedMessage}"
+            }
+        }
+    }
+
+    val getContentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        AppLockManager.isBypassingAutoLock = false
+        if (uri != null) {
+            try {
+                val content = BackupFileManager.readCsvFromUri(context, uri)
+                if (content.isNotBlank()) {
+                    rawInputText = content
+                    errorMessage = null
+                    doParse(content)
+                } else {
+                    errorMessage = "所选文件内容为空"
+                }
+            } catch (e: Exception) {
+                errorMessage = "读取文件失败：${e.localizedMessage}"
+            }
+        }
+    }
+
+    val launchSystemFilePicker: () -> Unit = {
+        try {
+            AppLockManager.isBypassingAutoLock = true
+            openDocLauncher.launch(arrayOf("*/*"))
+        } catch (_: Exception) {
+            try {
+                getContentLauncher.launch("*/*")
+            } catch (e2: Exception) {
+                AppLockManager.isBypassingAutoLock = false
+                errorMessage = "无法调起系统文件选择器（${e2.localizedMessage ?: "未找到文件管理程序"}）。建议复制 CSV 文件内容后点击「粘贴剪贴板」导入。"
             }
         }
     }
@@ -306,7 +347,15 @@ fun SmartTextImportDialog(
 
                             item {
                                 AssistChip(
-                                    onClick = { csvPickerLauncher.launch("*/*") },
+                                    onClick = {
+                                        val localFiles = BackupFileManager.listLocalCsvFiles(context)
+                                        if (localFiles.isNotEmpty()) {
+                                            detectedCsvFiles = localFiles
+                                            showLocalCsvDialog = true
+                                        } else {
+                                            launchSystemFilePicker()
+                                        }
+                                    },
                                     leadingIcon = {
                                         Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                                     },
@@ -552,6 +601,121 @@ fun SmartTextImportDialog(
                     parsedList[idx] = updated
                 }
                 editingItem = null
+            }
+        )
+    }
+
+    if (showLocalCsvDialog) {
+        AlertDialog(
+            onDismissRequest = { showLocalCsvDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "选择 CSV 文件",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "已在设备「下载」目录中发现以下 CSV 文件，点击可直接导入：",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(detectedCsvFiles) { file ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showLocalCsvDialog = false
+                                        try {
+                                            val content = BackupFileManager.readCsvFromFile(file)
+                                            if (content.isNotBlank()) {
+                                                rawInputText = content
+                                                errorMessage = null
+                                                doParse(content)
+                                            } else {
+                                                errorMessage = "文件内容为空：${file.name}"
+                                            }
+                                        } catch (e: Exception) {
+                                            errorMessage = "读取文件失败：${e.localizedMessage}"
+                                        }
+                                    },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = file.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        val sizeKb = (file.length() / 1024.0).let { "%.1f KB".format(it) }
+                                        Text(
+                                            text = "${TimeFormatter.formatFull(file.lastModified())} • $sizeKb",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            showLocalCsvDialog = false
+                            launchSystemFilePicker()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("打开系统文件选择器...")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showLocalCsvDialog = false }) {
+                    Text("取消")
+                }
             }
         )
     }
