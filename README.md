@@ -192,7 +192,8 @@ cd KeyFortress
 ## 📥 下载安装
 
 最新打包的独立 APK 安装包已发布于 GitHub Releases：
-👉 **[点击前往 GitHub Releases 下载最新 APK 安装包](https://github.com/CGW-Dev1/KeyFortress/releases)**
+- 🚀 **[直接下载 KeyFortress-v1.0.0.apk (33.7MB)](https://github.com/CGW-Dev1/KeyFortress/releases/download/v1.0.0/KeyFortress-v1.0.0.apk)**
+- 📦 **[查看全部 Releases 发布记录与版本日志](https://github.com/CGW-Dev1/KeyFortress/releases)**
 
 ---
 
