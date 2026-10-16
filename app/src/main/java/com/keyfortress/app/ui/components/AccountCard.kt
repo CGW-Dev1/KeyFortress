@@ -172,23 +172,6 @@ fun AccountCard(
                             )
                         }
                     }
-
-                    if (account.customFields.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(BADGE_SHAPE)
-                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f))
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "+${account.customFields.size}字段",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                fontSize = 9.sp
-                            )
-                        }
-                    }
                 }
 
                 Text(

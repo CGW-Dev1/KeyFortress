@@ -37,12 +37,6 @@ data class VaultBackupPayload(
             }
             item.put("history", historyArray)
 
-            val customFieldsArray = JSONArray()
-            for (cf in acc.customFields) {
-                customFieldsArray.put(cf.toJson())
-            }
-            item.put("customFields", customFieldsArray)
-
             accountsArray.put(item)
         }
         root.put("accounts", accountsArray)
@@ -72,12 +66,6 @@ data class VaultBackupPayload(
                     )
                 }
 
-                val customFieldsList = mutableListOf<CustomField>()
-                val cfArray = item.optJSONArray("customFields") ?: JSONArray()
-                for (j in 0 until cfArray.length()) {
-                    customFieldsList.add(CustomField.fromJson(cfArray.getJSONObject(j)))
-                }
-
                 accountsList.add(
                     AccountBackupItem(
                         title = item.optString("title", ""),
@@ -89,8 +77,7 @@ data class VaultBackupPayload(
                         isStarred = item.optBoolean("isStarred", false),
                         createdAt = item.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = item.optLong("updatedAt", System.currentTimeMillis()),
-                        history = historyList,
-                        customFields = customFieldsList
+                        history = historyList
                     )
                 )
             }
@@ -115,8 +102,7 @@ data class AccountBackupItem(
     val isStarred: Boolean,
     val createdAt: Long,
     val updatedAt: Long,
-    val history: List<HistoryBackupItem> = emptyList(),
-    val customFields: List<CustomField> = emptyList()
+    val history: List<HistoryBackupItem> = emptyList()
 )
 
 data class HistoryBackupItem(

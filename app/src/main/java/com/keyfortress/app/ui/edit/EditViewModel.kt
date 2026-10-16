@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.keyfortress.app.data.entity.CategoryEntity
 import com.keyfortress.app.data.model.CategoryConstants
-import com.keyfortress.app.data.model.CustomField
 import com.keyfortress.app.data.repository.AccountItem
 import com.keyfortress.app.data.repository.AccountRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +23,6 @@ data class EditUiState(
     val linkedContact: String = "",
     val category: String = CategoryConstants.SOCIAL,
     val notes: String = "",
-    val customFields: List<CustomField> = emptyList(),
     val isStarred: Boolean = false,
     val isEditMode: Boolean = false,
     val errorMessage: String = "",
@@ -59,7 +57,6 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
                     linkedContact = acc.linkedContact,
                     category = acc.category,
                     notes = acc.notes,
-                    customFields = acc.customFields,
                     isStarred = acc.isStarred,
                     isEditMode = true
                 )
@@ -89,29 +86,6 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onNotesChange(notes: String) {
         _uiState.value = _uiState.value.copy(notes = notes)
-    }
-
-    // ================= Custom Fields =================
-    fun addCustomField(label: String, value: String, isSecured: Boolean) {
-        val trimmedLabel = label.trim()
-        val trimmedValue = value.trim()
-        if (trimmedLabel.isBlank()) return
-
-        val current = _uiState.value.customFields.toMutableList()
-        current.add(CustomField(label = trimmedLabel, value = trimmedValue, isSecured = isSecured))
-        _uiState.value = _uiState.value.copy(customFields = current)
-    }
-
-    fun updateCustomField(id: String, label: String, value: String, isSecured: Boolean) {
-        val current = _uiState.value.customFields.map {
-            if (it.id == id) it.copy(label = label.trim(), value = value.trim(), isSecured = isSecured) else it
-        }
-        _uiState.value = _uiState.value.copy(customFields = current)
-    }
-
-    fun removeCustomField(id: String) {
-        val current = _uiState.value.customFields.filterNot { it.id == id }
-        _uiState.value = _uiState.value.copy(customFields = current)
     }
 
     // ================= Category Addition =================
@@ -167,7 +141,6 @@ class EditViewModel(application: Application) : AndroidViewModel(application) {
                         linkedContact = state.linkedContact.trim(),
                         category = state.category,
                         notes = state.notes.trim(),
-                        customFields = state.customFields,
                         isStarred = state.isStarred
                     )
                 )

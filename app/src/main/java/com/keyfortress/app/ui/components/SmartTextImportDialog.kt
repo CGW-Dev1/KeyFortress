@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,8 +30,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -38,9 +41,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,28 +58,36 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.keyfortress.app.data.model.CategoryConstants
 import com.keyfortress.app.data.repository.AccountItem
+import com.keyfortress.app.ui.theme.AvatarGradients
 import com.keyfortress.app.util.SmartTextParser
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 private const val DEFAULT_SAMPLE_TEXT = """微信：13800138000——WxPass#2026——常用社交账号
 公司堡垒机：dev_admin——Fortress@Secure99
 招商银行：6225880123456789——Bank#Pwd888——常用储蓄卡"""
 
 data class ParsedItemUiState(
-    var id: String = java.util.UUID.randomUUID().toString(),
+    val id: String = java.util.UUID.randomUUID().toString(),
     var title: String = "",
     var accountName: String = "",
     var password: String = "",
@@ -98,9 +109,13 @@ fun SmartTextImportDialog(
     onConfirmImport: (List<AccountItem>) -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var currentStep by remember { mutableStateOf(ImportStep.INPUT) }
     var rawInputText by remember { mutableStateOf("") }
+    var isParsing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var editingItem by remember { mutableStateOf<ParsedItemUiState?>(null) }
 
     val parsedList = remember { mutableStateListOf<ParsedItemUiState>() }
 
@@ -109,14 +124,20 @@ fun SmartTextImportDialog(
             errorMessage = "请输入或粘贴待导入的文本内容"
             return
         }
-        val results = SmartTextParser.parse(text)
-        if (results.isEmpty()) {
-            errorMessage = "未能识别出有效的账号密码信息，请检查文本格式"
-            return
-        }
-        parsedList.clear()
-        results.forEach { parsed ->
-            parsedList.add(
+        isParsing = true
+        errorMessage = null
+
+        coroutineScope.launch {
+            // Run heavy regex parsing in background thread to prevent UI freezing on large pastes
+            val results = withContext(Dispatchers.Default) {
+                SmartTextParser.parse(text)
+            }
+            if (results.isEmpty()) {
+                errorMessage = "未能识别出有效的账号密码信息，请检查文本格式"
+                isParsing = false
+                return@launch
+            }
+            val mapped = results.map { parsed ->
                 ParsedItemUiState(
                     title = parsed.title,
                     accountName = parsed.accountName,
@@ -125,10 +146,12 @@ fun SmartTextImportDialog(
                     category = parsed.category,
                     isSelected = true
                 )
-            )
+            }
+            parsedList.clear()
+            parsedList.addAll(mapped)
+            isParsing = false
+            currentStep = ImportStep.PREVIEW
         }
-        errorMessage = null
-        currentStep = ImportStep.PREVIEW
     }
 
     Dialog(
@@ -205,19 +228,20 @@ fun SmartTextImportDialog(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "• 平台：账号——密码——备注\n• 平台\\t账号\\t密码 (从表格直接复制)\n• 平台:xxx 账号:xxx 密码:xxx\n• 空格、逗号、斜杠等分隔，自动智能判断",
+                            text = "• 平台：账号——密码——备注\n• 平台\\t账号\\t密码 (从表格直接复制)\n• 平台:xxx 账号:xxx 密码:xxx\n• 空格、逗号、破折号分隔，智能判断",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 18.sp,
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         // Quick buttons
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             AssistChip(
                                 onClick = {
@@ -254,7 +278,18 @@ fun SmartTextImportDialog(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        if (rawInputText.isNotBlank()) {
+                            val lineCount = rawInputText.lines().count { it.isNotBlank() }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "已载入 $lineCount 行文本 (共 ${rawInputText.length} 字符)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         OutlinedTextField(
                             value = rawInputText,
@@ -265,6 +300,7 @@ fun SmartTextImportDialog(
                             placeholder = {
                                 Text("请在此粘贴或输入待导入的密码文本...\n\n示例：\n$DEFAULT_SAMPLE_TEXT")
                             },
+                            maxLines = 10,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
@@ -283,14 +319,31 @@ fun SmartTextImportDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Button(
-                        onClick = { doParse(rawInputText) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("开始智能识别 (解析)")
+                    if (isParsing) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("正在智能语义识别，请稍候...", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    } else {
+                        Button(
+                            onClick = { doParse(rawInputText) },
+                            enabled = rawInputText.isNotBlank(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("开始智能识别 (解析)")
+                        }
                     }
                 } else {
                     // PREVIEW Step
@@ -334,21 +387,36 @@ fun SmartTextImportDialog(
                             }
                         }
 
+                        // Ultra high-performance preview LazyColumn with compact read cards
                         LazyColumn(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(vertical = 4.dp)
                         ) {
-                            itemsIndexed(parsedList, key = { _, item -> item.id }) { index, item ->
-                                ParsedAccountCard(
+                            items(
+                                items = parsedList,
+                                key = { it.id },
+                                contentType = { "parsed_card" }
+                            ) { item ->
+                                CompactParsedCard(
                                     item = item,
-                                    onItemChange = { updated ->
-                                        parsedList[index] = updated
+                                    onToggleSelect = {
+                                        val idx = parsedList.indexOfFirst { it.id == item.id }
+                                        if (idx != -1) {
+                                            parsedList[idx] = item.copy(isSelected = !item.isSelected)
+                                        }
                                     },
+                                    onTogglePasswordVisibility = {
+                                        val idx = parsedList.indexOfFirst { it.id == item.id }
+                                        if (idx != -1) {
+                                            parsedList[idx] = item.copy(isPasswordVisible = !item.isPasswordVisible)
+                                        }
+                                    },
+                                    onEdit = { editingItem = item },
                                     onDelete = {
-                                        parsedList.removeAt(index)
+                                        parsedList.removeAll { it.id == item.id }
                                     }
                                 )
                             }
@@ -363,7 +431,9 @@ fun SmartTextImportDialog(
                     ) {
                         OutlinedButton(
                             onClick = { currentStep = ImportStep.INPUT },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("返回")
@@ -385,7 +455,9 @@ fun SmartTextImportDialog(
                                 onConfirmImport(toImport)
                             },
                             enabled = selectedCount > 0,
-                            modifier = Modifier.weight(2f),
+                            modifier = Modifier
+                                .weight(2f)
+                                .height(48.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -397,132 +469,287 @@ fun SmartTextImportDialog(
             }
         }
     }
+
+    // Modal Edit Dialog for single item tweaking
+    if (editingItem != null) {
+        val target = editingItem!!
+        EditParsedItemDialog(
+            item = target,
+            onDismiss = { editingItem = null },
+            onSave = { updated ->
+                val idx = parsedList.indexOfFirst { it.id == target.id }
+                if (idx != -1) {
+                    parsedList[idx] = updated
+                }
+                editingItem = null
+            }
+        )
+    }
 }
 
+/**
+ * Lightweight, high-performance card for smart preview items.
+ * Renders instantaneously without heavy multi-TextField layout overhead.
+ */
 @Composable
-private fun ParsedAccountCard(
+private fun CompactParsedCard(
     item: ParsedItemUiState,
-    onItemChange: (ParsedItemUiState) -> Unit,
+    onToggleSelect: () -> Unit,
+    onTogglePasswordVisibility: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    var categoryMenuExpanded by remember { mutableStateOf(false) }
+    val gradientColors = remember(item.title) {
+        val gradientIndex = abs(item.title.hashCode()) % AvatarGradients.size
+        AvatarGradients[gradientIndex]
+    }
+    val backgroundBrush = remember(gradientColors) {
+        Brush.linearGradient(listOf(gradientColors.first, gradientColors.second))
+    }
+    val initial = remember(item.title) {
+        item.title.firstOrNull()?.toString()?.uppercase() ?: "K"
+    }
 
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (item.isSelected) {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                MaterialTheme.colorScheme.surfaceVariant
             } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             }
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggleSelect)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Header Row: Checkbox, Title Field, Category Chip, Delete
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = item.isSelected,
-                    onCheckedChange = { checked ->
-                        onItemChange(item.copy(isSelected = checked))
-                    }
-                )
-
-                OutlinedTextField(
-                    value = item.title,
-                    onValueChange = { onItemChange(item.copy(title = it)) },
-                    label = { Text("平台名称") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Category selector button
-                Box {
-                    AssistChip(
-                        onClick = { categoryMenuExpanded = true },
-                        label = { Text(item.category, fontSize = 12.sp) }
-                    )
-                    DropdownMenu(
-                        expanded = categoryMenuExpanded,
-                        onDismissRequest = { categoryMenuExpanded = false }
-                    ) {
-                        CategoryConstants.DEFAULT_CATEGORIES.forEach { cat ->
-                            DropdownMenuItem(
-                                text = { Text(cat) },
-                                onClick = {
-                                    onItemChange(item.copy(category = cat))
-                                    categoryMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "删除该条",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Account and Password in a Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = item.accountName,
-                    onValueChange = { onItemChange(item.copy(accountName = it)) },
-                    label = { Text("账号") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
-                )
-
-                OutlinedTextField(
-                    value = item.password,
-                    onValueChange = { onItemChange(item.copy(password = it)) },
-                    label = { Text("密码") },
-                    singleLine = true,
-                    visualTransformation = if (item.isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { onItemChange(item.copy(isPasswordVisible = !item.isPasswordVisible)) }) {
-                            Icon(
-                                imageVector = if (item.isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (item.isPasswordVisible) "隐藏密码" else "显示明文",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Notes
-            OutlinedTextField(
-                value = item.notes,
-                onValueChange = { onItemChange(item.copy(notes = it)) },
-                label = { Text("备注信息 (可选)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = item.isSelected,
+                onCheckedChange = { onToggleSelect() },
+                modifier = Modifier.size(24.dp)
             )
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Avatar circle
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(backgroundBrush),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = initial,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Text column
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.title.ifBlank { "未知平台" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = item.category,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = item.accountName.ifBlank { "(未识别到账号)" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (item.isPasswordVisible) item.password else "••••••••",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = if (item.isPasswordVisible) FontFamily.Monospace else FontFamily.Default
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (item.isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable(onClick = onTogglePasswordVisibility)
+                    )
+                }
+
+                if (item.notes.isNotBlank()) {
+                    Text(
+                        text = "备注: ${item.notes}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Edit & Delete Buttons
+            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "修改",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "删除",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
+}
+
+/**
+ * Modal dialog to edit single parsed account item.
+ */
+@Composable
+private fun EditParsedItemDialog(
+    item: ParsedItemUiState,
+    onDismiss: () -> Unit,
+    onSave: (ParsedItemUiState) -> Unit
+) {
+    var title by remember { mutableStateOf(item.title) }
+    var accountName by remember { mutableStateOf(item.accountName) }
+    var password by remember { mutableStateOf(item.password) }
+    var notes by remember { mutableStateOf(item.notes) }
+    var category by remember { mutableStateOf(item.category) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("修改识别条目") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("平台名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("分类：", style = MaterialTheme.typography.bodySmall)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(CategoryConstants.DEFAULT_CATEGORIES) { cat ->
+                        FilterChip(
+                            selected = category == cat,
+                            onClick = { category = cat },
+                            label = { Text(cat, fontSize = 12.sp) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = accountName,
+                    onValueChange = { accountName = it },
+                    label = { Text("账号") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("密码") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("备注 (选填)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        item.copy(
+                            title = title.trim(),
+                            accountName = accountName.trim(),
+                            password = password.trim(),
+                            notes = notes.trim(),
+                            category = category
+                        )
+                    )
+                },
+                enabled = title.isNotBlank()
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 /**

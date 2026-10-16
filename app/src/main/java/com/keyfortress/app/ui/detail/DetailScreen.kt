@@ -60,7 +60,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.keyfortress.app.data.model.CustomField
 import com.keyfortress.app.data.model.PasswordStrengthCalculator
 import com.keyfortress.app.data.repository.HistoryItem
 import com.keyfortress.app.ui.components.ConfirmDialog
@@ -304,24 +303,6 @@ fun DetailScreen(
                     )
                 }
 
-                if (acc.customFields.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Text(
-                        text = "自定义字段",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    acc.customFields.forEach { field ->
-                        CustomFieldDetailItem(
-                            field = field,
-                            onCopy = { viewModel.copyText(field.label, field.value, isSensitive = field.isSecured) }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                }
-
                 // Password History Section (PRD P2)
                 if (history.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(24.dp))
@@ -453,59 +434,6 @@ private fun HistoryItemCard(
                     contentDescription = "复制历史密码",
                     modifier = Modifier.size(18.dp)
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CustomFieldDetailItem(
-    field: CustomField,
-    onCopy: () -> Unit
-) {
-    var isVisible by remember { mutableStateOf(!field.isSecured) }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = if (field.isSecured) Icons.Default.Key else Icons.Default.Notes,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = field.label,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = if (isVisible) field.value else "••••••••",
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontFamily = if (isVisible && field.isSecured) FontFamily.Monospace else FontFamily.Default,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                )
-            }
-            if (field.isSecured) {
-                IconButton(onClick = { isVisible = !isVisible }) {
-                    Icon(
-                        imageVector = if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (isVisible) "隐藏" else "查看"
-                    )
-                }
-            }
-            IconButton(onClick = onCopy) {
-                Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "复制${field.label}")
             }
         }
     }

@@ -64,7 +64,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.keyfortress.app.data.model.CategoryConstants
-import com.keyfortress.app.data.model.CustomField
 import com.keyfortress.app.ui.components.PasswordGeneratorSheet
 import com.keyfortress.app.ui.components.PasswordStrengthBar
 import com.keyfortress.app.ui.components.SingleSmartParseDialog
@@ -102,7 +101,6 @@ fun EditScreen(
     var showGeneratorSheet by remember { mutableStateOf(false) }
     var showSmartParseDialog by remember { mutableStateOf(false) }
     var showNewCategoryDialog by remember { mutableStateOf(false) }
-    var showAddCustomFieldDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -308,48 +306,6 @@ fun EditScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Custom Fields Section (交易密码、验证密码、PIN等)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "自定义字段",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "可添加交易密码、支付PIN、安全邮箱等字段",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = { showAddCustomFieldDialog = true },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("添加字段")
-                }
-            }
-
-            if (uiState.customFields.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                uiState.customFields.forEach { field ->
-                    CustomFieldEditCard(
-                        field = field,
-                        onDelete = { viewModel.removeCustomField(field.id) }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-
             Spacer(modifier = Modifier.height(14.dp))
 
             // Starred Switch
@@ -433,165 +389,5 @@ fun EditScreen(
                 }
             }
         )
-    }
-
-    // Add Custom Field Dialog
-    if (showAddCustomFieldDialog) {
-        var fieldLabel by remember { mutableStateOf("") }
-        var fieldValue by remember { mutableStateOf("") }
-        var isSecured by remember { mutableStateOf(true) }
-
-        AlertDialog(
-            onDismissRequest = { showAddCustomFieldDialog = false },
-            title = { Text("添加自定义字段") },
-            text = {
-                Column {
-                    Text(
-                        text = "快捷选择字段类型：",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(CustomField.PRESET_LABELS) { preset ->
-                            AssistChip(
-                                onClick = {
-                                    fieldLabel = preset
-                                    isSecured = preset.contains("密码") || preset.contains("PIN") || preset.contains("口令")
-                                },
-                                label = { Text(preset, fontSize = 12.sp) }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    OutlinedTextField(
-                        value = fieldLabel,
-                        onValueChange = { fieldLabel = it },
-                        label = { Text("字段名称 (如：交易密码)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = fieldValue,
-                        onValueChange = { fieldValue = it },
-                        label = { Text("字段内容 / 密码") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Checkbox(
-                            checked = isSecured,
-                            onCheckedChange = { isSecured = it }
-                        )
-                        Text(
-                            text = "保密字段 (默认作为密码隐藏)",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (fieldLabel.isNotBlank()) {
-                            viewModel.addCustomField(fieldLabel, fieldValue, isSecured)
-                            showAddCustomFieldDialog = false
-                        }
-                    },
-                    enabled = fieldLabel.isNotBlank()
-                ) {
-                    Text("添加")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddCustomFieldDialog = false }) {
-                    Text("取消")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun CustomFieldEditCard(
-    field: CustomField,
-    onDelete: () -> Unit
-) {
-    var isVisible by remember { mutableStateOf(!field.isSecured) }
-
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = field.label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = if (field.isSecured) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                else MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = if (field.isSecured) "加密隐藏" else "明文",
-                            fontSize = 10.sp,
-                            color = if (field.isSecured) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-                        )
-                    }
-                }
-                Text(
-                    text = if (isVisible) field.value else "••••••••",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = if (isVisible && field.isSecured) FontFamily.Monospace else FontFamily.Default
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (field.isSecured) {
-                IconButton(onClick = { isVisible = !isVisible }, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (isVisible) "隐藏" else "查看",
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除字段",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
     }
 }

@@ -189,18 +189,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun copyPassword(account: AccountItem) {
-        ClipboardHelper.copyToClipboard(
-            context = getApplication(),
-            label = "密码",
-            text = account.password,
-            isSensitive = true,
-            scope = viewModelScope
-        ) {
-            viewModelScope.launch {
-                _snackbarMessage.emit("密码已从剪贴板自动清理")
-            }
-        }
         viewModelScope.launch {
+            val password = repository.getDecryptedPassword(account.id)
+            ClipboardHelper.copyToClipboard(
+                context = getApplication(),
+                label = "密码",
+                text = password,
+                isSensitive = true,
+                scope = viewModelScope
+            ) {
+                viewModelScope.launch {
+                    _snackbarMessage.emit("密码已从剪贴板自动清理")
+                }
+            }
             _snackbarMessage.emit("密码已复制 (将在30秒后自动清除剪贴板)")
         }
     }

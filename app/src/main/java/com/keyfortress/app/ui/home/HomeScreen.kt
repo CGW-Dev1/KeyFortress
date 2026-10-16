@@ -153,19 +153,31 @@ fun HomeScreen(
                         )
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.enterSelectionMode() }) {
+                        IconButton(
+                            onClick = { viewModel.enterSelectionMode() },
+                            modifier = Modifier.size(38.dp)
+                        ) {
                             Icon(imageVector = Icons.Default.Checklist, contentDescription = "批量管理")
                         }
-                        IconButton(onClick = { showSmartImportDialog = true }) {
+                        IconButton(
+                            onClick = { showSmartImportDialog = true },
+                            modifier = Modifier.size(38.dp)
+                        ) {
                             Icon(imageVector = Icons.Default.PostAdd, contentDescription = "智能文本导入")
                         }
-                        IconButton(onClick = {
-                            AppLockManager.lock()
-                            onLockApp()
-                        }) {
+                        IconButton(
+                            onClick = {
+                                AppLockManager.lock()
+                                onLockApp()
+                            },
+                            modifier = Modifier.size(38.dp)
+                        ) {
                             Icon(imageVector = Icons.Default.Lock, contentDescription = "立即锁定")
                         }
-                        IconButton(onClick = onNavigateToSettings) {
+                        IconButton(
+                            onClick = onNavigateToSettings,
+                            modifier = Modifier.size(38.dp)
+                        ) {
                             Icon(imageVector = Icons.Default.Settings, contentDescription = "设置")
                         }
                     },
@@ -204,7 +216,7 @@ fun HomeScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.onSearchQueryChanged(it) },
-                    placeholder = { Text("搜索账号/平台/备注/自定义字段 (如 wx、交易)") },
+                    placeholder = { Text("搜索平台、账号或备注 (如 wx、微信)") },
                     leadingIcon = {
                         Icon(imageVector = Icons.Default.Search, contentDescription = null)
                     },
