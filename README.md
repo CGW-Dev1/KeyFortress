@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/UI-Jetpack_Compose_(Material_3)-4285F4?logo=jetpackcompose&logoColor=white" alt="Compose" />
   <img src="https://img.shields.io/badge/Security-AES--256--GCM_%2B_SQLCipher-red" alt="Security" />
   <img src="https://img.shields.io/badge/Network-Zero_Permissions-brightgreen" alt="No Internet" />
-  <img src="https://img.shields.io/badge/Release-v1.1.0-blue" alt="Release" />
+  <img src="https://img.shields.io/badge/Release-v1.2.0-blue" alt="Release" />
 </p>
 
 > **安全 · 离线 · 纯粹**  
@@ -57,9 +57,11 @@ KeyFortress 将安全性作为产品的生命线，严格贯彻底层原生防�
 - 🗂️ **动态自定义分类 & 防丢失迁移**：
   - 支持自主添加、重命名与删除自定义分类标签；
   - 若删除某个分类，该分类下的账号**自动安全降级转移至默认分组（其它）**，绝不丢失任何数据。
-- 🗑️ **主页批量管理与多选删除**：
+- 🏷️ **主页批量多选管理（批量设置分类 & 批量删除）**：
   - 长按任意卡片或点击顶部批量图标进入多选模式；
-  - 支持一键全选/取消全选，二次弹窗防误触批量清除。
+  - **批量归类与标签变更**：一键将选中的多条账号记录批量移动至目标分类，并支持即时创建新分类并归入；
+  - **批量安全删除**：支持一键全选/取消全选，二次确认弹窗防误触彻底清除；
+  - **双向人体工学交互**：顶部操作栏与屏幕底部快捷操作栏协同呈现，单手大屏操控省心高效。
 - 🎲 **高强度随机密码发生器**：
   - 8-32 位可调长度，自由组合大写字母、小写字母、数字及特殊符号，支持排除易混淆字符（`0/O`, `1/l/I`）。
 - 🔍 **智能检索与拼音首字母匹配**：
@@ -194,7 +196,7 @@ cd KeyFortress
 ## 📥 下载安装
 
 最新打包的独立 APK 安装包已发布于 GitHub Releases：
-- 🚀 **[直接下载最新 KeyFortress-v1.1.0.apk (25.4MB - 已签名直接安装)](https://github.com/CGW-Dev1/KeyFortress/releases/download/v1.1.0/KeyFortress-v1.1.0.apk)**
+- 🚀 **[直接下载最新 KeyFortress-v1.2.0.apk (25.4MB - 已签名直接安装)](https://github.com/CGW-Dev1/KeyFortress/releases/download/v1.2.0/KeyFortress-v1.2.0.apk)**
 - 📦 **[查看全部 Releases 发布记录与版本日志](https://github.com/CGW-Dev1/KeyFortress/releases)**
 
 ---

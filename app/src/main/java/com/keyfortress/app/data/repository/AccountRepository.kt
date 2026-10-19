@@ -294,6 +294,19 @@ class AccountRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Batch updates category for specified accounts inside SQLite.
+     * Invalidates in-memory decrypted cache for these accounts.
+     */
+    suspend fun updateCategoryForAccounts(ids: List<Long>, targetCategory: String) = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext
+        val now = System.currentTimeMillis()
+        getDatabase().accountDao().updateCategoryForIds(ids, targetCategory, now)
+        ids.forEach { id ->
+            decryptedCache.keys.filter { it.startsWith("$id:") }.forEach { decryptedCache.remove(it) }
+        }
+    }
+
     suspend fun toggleStarred(id: Long, isStarred: Boolean) = withContext(Dispatchers.IO) {
         getDatabase().accountDao().updateStarred(id, isStarred)
     }

@@ -2,8 +2,10 @@ package com.keyfortress.app.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
@@ -47,6 +50,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -67,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.keyfortress.app.security.AppLockManager
 import com.keyfortress.app.ui.components.AccountCard
+import com.keyfortress.app.ui.components.BatchChangeCategoryDialog
 import com.keyfortress.app.ui.components.CategoryChipRow
 import com.keyfortress.app.ui.components.CategoryManagementDialog
 import com.keyfortress.app.ui.components.SmartTextImportDialog
@@ -92,6 +97,7 @@ fun HomeScreen(
     var showSmartImportDialog by remember { mutableStateOf(false) }
     var showCategoryDialog by remember { mutableStateOf(false) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    var showBatchCategoryDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Intercept back button when in selection mode
@@ -126,6 +132,16 @@ fun HomeScreen(
                     actions = {
                         TextButton(onClick = { viewModel.toggleSelectAll() }) {
                             Text(if (allSelected) "全不选" else "全选")
+                        }
+                        IconButton(
+                            onClick = { showBatchCategoryDialog = true },
+                            enabled = selectedAccountIds.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Category,
+                                contentDescription = "设置分类",
+                                tint = if (selectedAccountIds.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
                         }
                         IconButton(
                             onClick = { showBatchDeleteConfirm = true },
@@ -185,6 +201,61 @@ fun HomeScreen(
                         containerColor = MaterialTheme.colorScheme.background
                     )
                 )
+            }
+        },
+        bottomBar = {
+            AnimatedVisibility(
+                visible = isSelectionMode,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Surface(
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showBatchCategoryDialog = true },
+                            enabled = selectedAccountIds.isNotEmpty(),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Category,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                if (selectedAccountIds.isEmpty()) "移动分类" else "移动分类 (${selectedAccountIds.size})"
+                            )
+                        }
+                        Button(
+                            onClick = { showBatchDeleteConfirm = true },
+                            enabled = selectedAccountIds.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                if (selectedAccountIds.isEmpty()) "批量删除" else "批量删除 (${selectedAccountIds.size})"
+                            )
+                        }
+                    }
+                }
             }
         },
         floatingActionButton = {
@@ -387,6 +458,22 @@ fun HomeScreen(
                     Text("取消")
                 }
             }
+        )
+    }
+
+    if (showBatchCategoryDialog) {
+        BatchChangeCategoryDialog(
+            selectedCount = selectedAccountIds.size,
+            categories = categories,
+            onSelectCategory = { targetCategory ->
+                viewModel.moveSelectedAccountsToCategory(targetCategory)
+                showBatchCategoryDialog = false
+            },
+            onCreateAndSelectCategory = { newCategory ->
+                viewModel.addCategoryAndMoveSelected(newCategory)
+                showBatchCategoryDialog = false
+            },
+            onDismiss = { showBatchCategoryDialog = false }
         )
     }
 }

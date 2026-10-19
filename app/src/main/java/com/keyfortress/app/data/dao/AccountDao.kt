@@ -33,6 +33,9 @@ interface AccountDao {
     @Query("UPDATE accounts SET category = :targetCategory WHERE category = :sourceCategory")
     suspend fun updateCategoryName(sourceCategory: String, targetCategory: String)
 
+    @Query("UPDATE accounts SET category = :category, updated_at = :updatedAt WHERE id IN (:ids)")
+    suspend fun updateCategoryForIds(ids: List<Long>, category: String, updatedAt: Long = System.currentTimeMillis())
+
     @Query("SELECT * FROM accounts WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): AccountEntity?
 

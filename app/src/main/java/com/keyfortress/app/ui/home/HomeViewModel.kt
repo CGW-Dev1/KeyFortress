@@ -131,6 +131,42 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun moveSelectedAccountsToCategory(targetCategory: String) {
+        val idsToMove = _selectedAccountIds.value.toList()
+        if (idsToMove.isEmpty()) return
+
+        viewModelScope.launch {
+            try {
+                repository.updateCategoryForAccounts(idsToMove, targetCategory)
+                val count = idsToMove.size
+                exitSelectionMode()
+                _snackbarMessage.emit("已将 $count 条记录分类更改为「$targetCategory」")
+            } catch (e: Exception) {
+                _snackbarMessage.emit("移动分类失败: ${e.message}")
+            }
+        }
+    }
+
+    fun addCategoryAndMoveSelected(name: String) {
+        val idsToMove = _selectedAccountIds.value.toList()
+        if (idsToMove.isEmpty()) return
+
+        viewModelScope.launch {
+            try {
+                val trimmed = name.trim()
+                if (trimmed.isNotBlank()) {
+                    repository.addCategory(trimmed)
+                }
+                repository.updateCategoryForAccounts(idsToMove, trimmed)
+                val count = idsToMove.size
+                exitSelectionMode()
+                _snackbarMessage.emit("已新建分类「$trimmed」并将 $count 条记录归入该分类")
+            } catch (e: Exception) {
+                _snackbarMessage.emit("操作失败: ${e.message}")
+            }
+        }
+    }
+
     // ================= Category Management Functions =================
     fun addCategory(name: String) {
         viewModelScope.launch {
